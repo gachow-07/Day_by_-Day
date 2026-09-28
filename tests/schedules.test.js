@@ -160,3 +160,43 @@ test('week start changes the calendar layout but not any statistic', () => {
   assert.equal(monGrid[0][1].date, '2026-09-01');
   assert.equal(core.setWeekStart(s, 5).ok, false);
 });
+
+test('goal history grid: done, missed, not due, pending and future days', () => {
+  // Weekdays goal, Monday-start weeks, starting Mon Sep 7.
+  let s = withHabits(MON, ['Work']);
+  s = core.updateHabit(s, 'h1', { schedule: { type: 'weekdays' } }, MON).state;
+  s = play(s, MON, '✓✗✓');                        // Mon done, Tue missed, Wed done
+  const thu = core.addDays(MON, 3);
+  s = openOn(s, thu);                              // Thu due, not done yet
+  const g = stats.habitGrid(s, 'h1', thu, 2, 1);
+  assert.equal(g.weeks.length, 2);
+  assert.equal(g.start, '2026-08-31');
+  assert.ok(g.weeks[0].every((c) => c.state === 'none'), 'week before the goal existed');
+  assert.deepEqual(g.weeks[1].map((c) => c.state), ['done', 'missed', 'done', 'pending', 'future', 'future', 'future']);
+  assert.deepEqual([g.due, g.done, g.doneAll], [3, 2, 2], 'today isn’t counted while it’s in progress');
+});
+
+test('goal history grid: a weekend with nothing due is "none", and weekly goals aren’t "missed"', () => {
+  let s = withHabits(MON, ['Work', 'Run']);
+  s = core.updateHabit(s, 'h1', { schedule: { type: 'weekdays' } }, MON).state;
+  s = core.updateHabit(s, 'h2', { schedule: { type: 'weekly', times: 2 } }, MON).state;
+  s = tick(s, MON, ['h2']);
+  s = openOn(s, SUN);
+  const work = stats.habitGrid(s, 'h1', SUN, 1, 1).weeks[0];
+  assert.equal(work[5].state, 'none', 'Saturday');
+  assert.equal(work[6].state, 'none', 'Sunday');
+  const run = stats.habitGrid(s, 'h2', SUN, 1, 1);
+  assert.equal(run.weeks[0][0].state, 'done');
+  assert.equal(run.weeks[0][1].state, 'open', 'a weekly goal not done on a day is not a miss');
+  assert.equal(run.due, 0);
+  assert.equal(run.doneAll, 1);
+});
+
+test('goal history grid is identical for existing every-day goals and week starts', () => {
+  const s = play(withHabits(MON, ['A']), MON, '✓½✓');
+  const sun = stats.habitGrid(s, 'h1', core.addDays(MON, 2), 1, 0).weeks[0];
+  const mon = stats.habitGrid(s, 'h1', core.addDays(MON, 2), 1, 1).weeks[0];
+  assert.equal(sun[0].date, '2026-09-06');
+  assert.equal(mon[0].date, MON);
+  assert.deepEqual(mon.slice(0, 3).map((c) => c.state), ['done', 'done', 'done'], '½ ticks the first goal');
+});

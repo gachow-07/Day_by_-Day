@@ -253,6 +253,53 @@
     return count;
   }
 
+  /**
+   * One goal's recent history as week columns for a contribution grid.
+   * Each cell is { date, state } where state is:
+   *   'done'     the goal was done that day
+   *   'missed'   it was due (every-day/chosen-day goal) and not done
+   *   'open'     a times-per-week goal that wasn't done that day (not a miss)
+   *   'pending'  today, due and not done yet
+   *   'none'     not due that day (not scheduled, paused, or before it existed)
+   *   'future'   after today
+   * Also returns totals for the window: due and done (required days only),
+   * and doneAll (every done day, including times-per-week goals).
+   */
+  function habitGrid(state, habitId, today, weeks, weekStart) {
+    var n = Math.max(1, Math.round(weeks) || 1);
+    var start = core.addDays(weekStartOf(today, weekStart), -(n - 1) * 7);
+    var cols = [];
+    var due = 0;
+    var done = 0;
+    var doneAll = 0;
+    for (var w = 0; w < n; w++) {
+      var col = [];
+      for (var i = 0; i < 7; i++) {
+        var d = core.addDays(start, w * 7 + i);
+        var cell = { date: d, state: 'none' };
+        if (d > today) {
+          cell.state = 'future';
+        } else {
+          var rec = state.days[d];
+          var entry = null;
+          if (rec) for (var k = 0; k < rec.habits.length; k++) if (rec.habits[k].id === habitId) entry = rec.habits[k];
+          if (entry) {
+            var isDone = rec.done.indexOf(habitId) >= 0;
+            if (isDone) doneAll++;
+            if (!entry.flex && !(d === today && !isDone)) {
+              due++;
+              if (isDone) done++;
+            }
+            cell.state = isDone ? 'done' : d === today ? 'pending' : entry.flex ? 'open' : 'missed';
+          }
+        }
+        col.push(cell);
+      }
+      cols.push(col);
+    }
+    return { start: start, weeks: cols, due: due, done: done, doneAll: doneAll };
+  }
+
   /* ---------------- Insights ---------------- */
 
   var DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -420,6 +467,7 @@
     weekdayStrength: weekdayStrength,
     habitStats: habitStats,
     weeklyProgress: weeklyProgress,
+    habitGrid: habitGrid,
     insights: insights,
     dailySeries: dailySeries,
     dayState: dayState,
