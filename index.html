@@ -7,20 +7,14 @@
   <meta name="theme-color" content="#1d6b47">
   <title>Day by Day</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="css/styles.css?v=7">
-  <script src="js/theme.js?v=7"></script>
+  <link rel="stylesheet" href="css/styles.css?v=8">
+  <script src="js/theme.js?v=8"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
 
   <header class="app-header">
     <h1 class="brand">Day by Day</h1>
-    <fieldset class="theme-switch">
-      <legend class="visually-hidden">Theme</legend>
-      <label><input type="radio" name="theme" value="auto" checked><span>Auto</span></label>
-      <label><input type="radio" name="theme" value="light"><span>Light</span></label>
-      <label><input type="radio" name="theme" value="dark"><span>Dark</span></label>
-    </fieldset>
   </header>
 
   <main id="main" tabindex="-1">
@@ -168,6 +162,17 @@
     <!-- ============ Settings ============ -->
     <section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="-1" hidden>
       <h2 class="visually-hidden">Settings</h2>
+      <section class="card" aria-labelledby="appearance-title">
+        <h2 id="appearance-title" class="section-title">Appearance</h2>
+        <p class="muted" id="theme-help">Auto follows your device’s light or dark setting. Your choice is saved on this device.</p>
+        <fieldset class="theme-switch" aria-describedby="theme-help">
+          <legend class="visually-hidden">Theme</legend>
+          <label><input type="radio" name="theme" value="auto" checked><span>Auto</span></label>
+          <label><input type="radio" name="theme" value="light"><span>Light</span></label>
+          <label><input type="radio" name="theme" value="dark"><span>Dark</span></label>
+        </fieldset>
+      </section>
+
       <!-- Account: only shown when sign-in is configured (js/firebase-config.js) -->
       <section id="account-view" class="card" aria-labelledby="account-title" hidden>
         <h2 id="account-title" class="section-title">Account</h2>
@@ -259,12 +264,12 @@
     </form>
   </dialog>
 
-  <script src="js/core.js?v=7"></script>
-  <script src="js/stats.js?v=7"></script>
-  <script src="js/storage.js?v=7"></script>
-  <script src="js/sync.js?v=7"></script>
-  <script src="js/firebase-config.js?v=7"></script>
-  <script src="js/cloud.js?v=7"></script>
-  <script src="js/app.js?v=7"></script>
+  <script src="js/core.js?v=8"></script>
+  <script src="js/stats.js?v=8"></script>
+  <script src="js/storage.js?v=8"></script>
+  <script src="js/sync.js?v=8"></script>
+  <script src="js/firebase-config.js?v=8"></script>
+  <script src="js/cloud.js?v=8"></script>
+  <script src="js/app.js?v=8"></script>
 </body>
 </html>
