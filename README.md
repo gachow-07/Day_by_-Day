@@ -34,10 +34,11 @@ GitHub Pages lets browsers keep CSS and JavaScript for about 10 minutes. Without
 
 ## How it works
 
-The app has two tabs.
+The app has three tabs.
 
 - **Today:** your current Locked In streak (and your best), then **Today's Goals** with a progress bar. Ticking a goal saves instantly. When every goal is done the card switches to **LOCKED IN ✓**. **Edit** opens the goal editor.
-- **Stats:** current streak, best streak, total Locked In days and completion rate; a month calendar of how every day went (tap a day for its details); a daily-completion chart (7 / 30 / 90 days / all time); a habit-consistency chart; and per-goal stats. Account and backup controls are at the bottom.
+- **Stats:** current streak, best streak, total Locked In days and completion rate; a month calendar of how every day went (tap a day for its details); a daily-completion chart (7 / 30 / 90 days / all time); a habit-consistency chart; and per-goal stats.
+- **Settings:** your account (sign in/out and sync status) and your data (export, import, delete everything).
 
 | Situation | What happens |
 | --- | --- |

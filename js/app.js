@@ -223,9 +223,11 @@
 
   /* ---------------- Tabs ---------------- */
 
+  var TABS = ['today', 'stats', 'settings'];
+
   function selectTab(name, focus) {
-    activeTab = name === 'stats' ? 'stats' : 'today';
-    ['today', 'stats'].forEach(function (t) {
+    activeTab = TABS.indexOf(name) >= 0 ? name : 'today';
+    TABS.forEach(function (t) {
       var tab = $('tab-' + t);
       var on = t === activeTab;
       tab.setAttribute('aria-selected', String(on));
@@ -234,7 +236,7 @@
     });
     if (focus) $('tab-' + activeTab).focus();
     try {
-      history.replaceState(null, '', activeTab === 'stats' ? '#stats' : location.pathname + location.search);
+      history.replaceState(null, '', activeTab === 'today' ? location.pathname + location.search : '#' + activeTab);
     } catch (e) {
       // file:// pages may refuse; the tab still works.
     }
@@ -245,9 +247,10 @@
   function onTabKey(event) {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Home' && event.key !== 'End') return;
     event.preventDefault();
-    var next = activeTab === 'today' ? 'stats' : 'today';
-    if (event.key === 'Home') next = 'today';
-    if (event.key === 'End') next = 'stats';
+    var i = TABS.indexOf(activeTab);
+    var next = TABS[(i + (event.key === 'ArrowLeft' ? TABS.length - 1 : 1)) % TABS.length];
+    if (event.key === 'Home') next = TABS[0];
+    if (event.key === 'End') next = TABS[TABS.length - 1];
     selectTab(next, true);
   }
 
@@ -1382,10 +1385,10 @@
     readOnly = loaded.readOnly;
     if (loaded.notice) showNotice(loaded.notice);
 
-    $('tab-today').addEventListener('click', function () { selectTab('today'); });
-    $('tab-stats').addEventListener('click', function () { selectTab('stats'); });
-    $('tab-today').addEventListener('keydown', onTabKey);
-    $('tab-stats').addEventListener('keydown', onTabKey);
+    TABS.forEach(function (t) {
+      $('tab-' + t).addEventListener('click', function () { selectTab(t); });
+      $('tab-' + t).addEventListener('keydown', onTabKey);
+    });
 
     $('goal-list').addEventListener('change', onGoalChange);
     $('first-goal-form').addEventListener('submit', onFirstGoal);
@@ -1439,7 +1442,7 @@
 
     startCloud();
     refreshDays();
-    selectTab(location.hash === '#stats' ? 'stats' : 'today');
+    selectTab(location.hash.slice(1));
     render();
   }
 
