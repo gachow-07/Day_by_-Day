@@ -65,7 +65,7 @@
   /* ---------------- Account documents ---------------- */
 
   function hasData(state) {
-    return !!(state && (state.challenge || (state.attempts && state.attempts.length)));
+    return !!(state && ((state.habits && state.habits.length) || (state.days && Object.keys(state.days).length)));
   }
 
   function sameData(a, b) {

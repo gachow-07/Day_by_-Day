@@ -3,16 +3,16 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const store = require('../js/storage.js');
-const { core, newChallenge, completeDays, FakeStorage } = require('./helpers.js');
+const { core, stats, withHabits, play, FakeStorage, v2Doc } = require('./helpers.js');
 
 const KEY = store.STORAGE_KEY;
 const NOW = new Date('2026-09-28T12:00:00Z');
 const START = '2026-09-01';
 
 function sampleState() {
-  let s = completeDays(newChallenge(START), START, 4);
-  s = core.reportFailure(s, '2026-09-05').state;
-  return completeDays(s, '2026-09-05', 2);
+  let s = play(withHabits(START), START, '✓✓✓½✓');
+  s = core.addHabit(s, 'Stretch', '2026-09-05').state;
+  return core.setHabitStatus(s, 'h1', 'archived', '2026-09-05').state;
 }
 
 /* ---------------- storage ---------------- */
@@ -38,33 +38,49 @@ test('save refuses invalid state and leaves stored data alone', () => {
   store.save(storage, good);
   const before = storage.getItem(KEY);
   const bad = JSON.parse(JSON.stringify(good));
-  bad.current.completedDates.push('2026-01-01');
+  bad.days['2026-09-02'].done.push('nope');
   assert.throws(() => store.save(storage, bad), /invalid/);
   assert.equal(storage.getItem(KEY), before);
 });
 
 const MALFORMED = {
-  'invalid JSON': '{"schemaVersion": 2, "challenge": ',
+  'invalid JSON': '{"schemaVersion": 3, "habits": ',
   'a JSON string': '"hello"',
   'a JSON array': '[1, 2, 3]',
   'null': 'null',
-  'wrong field types': JSON.stringify({ schemaVersion: 2, challenge: 'x', current: 5, attempts: {}, bestStreak: -1 }),
-  'an impossible date': (() => {
-    const s = newChallenge(START);
-    s.current.startDate = '2026-02-30';
+  'wrong field types': JSON.stringify({ schemaVersion: 3, habits: 'x', days: [] }),
+  'an impossible date key': (() => {
+    const s = withHabits(START);
+    s.days['2026-02-30'] = s.days[START];
     return JSON.stringify(s);
   })(),
-  'non-consecutive completed days': (() => {
-    const s = completeDays(newChallenge(START), START, 2);
-    s.current.completedDates = ['2026-09-01', '2026-09-03'];
+  'a record naming an unknown habit': (() => {
+    const s = withHabits(START);
+    s.days[START].habits.push({ id: 'ghost', name: 'Ghost' });
     return JSON.stringify(s);
   })(),
-  'unknown habit ids': (() => {
-    const s = newChallenge(START);
-    s.current.checked.habitIds = ['nope'];
+  'a duplicate habit id': (() => {
+    const s = withHabits(START);
+    s.habits.push(Object.assign({}, s.habits[0]));
     return JSON.stringify(s);
   })(),
-  'a bad schemaVersion': JSON.stringify({ schemaVersion: 'two' })
+  'an invalid habit status': (() => {
+    const s = withHabits(START);
+    s.habits[0].status = 'sleeping';
+    return JSON.stringify(s);
+  })(),
+  'an archived habit without a date': (() => {
+    const s = withHabits(START);
+    s.habits[0].status = 'archived';
+    return JSON.stringify(s);
+  })(),
+  'a completed habit that is not required that day': (() => {
+    const s = withHabits(START);
+    s.days[START].done = ['h1', 'h1'];
+    return JSON.stringify(s);
+  })(),
+  'damaged old challenge data': JSON.stringify(v2Doc({ current: { number: 1, startDate: START, status: 'active', completedDates: ['2026-09-01', '2026-09-03'], checked: { date: START, habitIds: [] } } })),
+  'a bad schemaVersion': JSON.stringify({ schemaVersion: 'three' })
 };
 
 for (const [label, raw] of Object.entries(MALFORMED)) {
@@ -106,7 +122,56 @@ test('blocked storage is reported instead of crashing', () => {
   assert.match(r.notice, /storage/);
 });
 
-/* ---------------- migration ---------------- */
+/* ---------------- migration from the challenge format ---------------- */
+
+test('challenge data (v2) becomes ongoing habits with day-by-day history', () => {
+  const r = core.migrate(v2Doc());
+  assert.equal(r.ok, true, r.message);
+  assert.equal(r.fromVersion, 2);
+  const s = r.state;
+  assert.deepEqual(s.habits, [
+    { id: 'h1', name: 'Workout', createdOn: '2026-09-01', status: 'active', archivedOn: null },
+    { id: 'h2', name: 'Read', createdOn: '2026-09-01', status: 'active', archivedOn: null }
+  ]);
+  // Attempt 1: Sep 1–3 done, Sep 4 missed; attempt 2 began Sep 5: Sep 5–6 done; Sep 7 half-done.
+  assert.deepEqual(Object.keys(s.days).sort(), ['2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04', '2026-09-05', '2026-09-06', '2026-09-07']);
+  const states = Object.keys(s.days).sort().map((d) => stats.dayState(s, d, '2026-09-07'));
+  assert.deepEqual(states, ['locked', 'locked', 'locked', 'missed', 'locked', 'locked', 'partial']);
+  assert.deepEqual(s.days['2026-09-07'].done, ['h2'], 'today’s ticks carry over');
+  const sum = stats.summary(s, '2026-09-07');
+  assert.equal(sum.bestStreak, 3, 'old best streak is recovered from history');
+  assert.equal(sum.currentStreak, 2);
+  assert.equal(sum.totalLockedInDays, 5);
+});
+
+test('a v2 attempt that ended in a reported failure keeps its completed days', () => {
+  const doc = v2Doc({
+    attempts: [{ number: 1, startDate: '2026-09-01', endDate: '2026-09-02', daysCompleted: 2, reason: 'failed', endedOn: '2026-09-03' }],
+    current: { number: 2, startDate: '2026-09-03', status: 'active', completedDates: [], checked: { date: '2026-09-03', habitIds: [] } }
+  });
+  const s = core.migrate(doc).state;
+  assert.deepEqual(Object.keys(s.days).sort().map((d) => stats.dayState(s, d, '2026-09-10')), ['locked', 'locked', 'missed']);
+});
+
+test('an empty v2 state migrates to an empty tracker', () => {
+  const r = core.migrate({ schemaVersion: 2, challenge: null, current: null, attempts: [], bestStreak: 0 });
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.state, core.emptyState());
+});
+
+test('load migrates v2 localStorage data, keeps a backup and saves the upgrade', () => {
+  const raw = JSON.stringify(v2Doc());
+  const storage = new FakeStorage({ [KEY]: raw });
+  const r = store.load(storage, NOW);
+  assert.equal(r.notice, null);
+  assert.equal(r.state.habits.length, 2);
+  assert.equal(JSON.parse(storage.getItem(KEY)).schemaVersion, core.SCHEMA_VERSION);
+  const backups = storage.keys().filter((k) => k.startsWith(store.BACKUP_PREFIX + 'v2.'));
+  assert.equal(backups.length, 1);
+  assert.equal(storage.getItem(backups[0]), raw);
+  assert.deepEqual(store.load(storage, NOW).state, r.state, 'loading again is a no-op');
+  assert.equal(storage.keys().length, 2);
+});
 
 const V1 = {
   challengeName: '75 Hard',
@@ -114,94 +179,72 @@ const V1 = {
   startDate: '2026-09-20',
   completedDays: ['2026-09-21', '2026-09-20'],
   checkedToday: { date: '2026-09-22', habits: [0, 2, 9] },
-  history: [
-    { start: '2026-08-01', end: '2026-08-12', days: 12, reason: 'missed' },
-    { start: '2026-08-14', end: '2026-08-15', days: 2, reason: 'failed' }
-  ],
+  history: [{ start: '2026-08-01', end: '2026-08-12', days: 12, reason: 'missed' }],
   best: 12
 };
 
-test('migrates unversioned (v1) data to the current schema', () => {
+test('unversioned (v1) data upgrades all the way to the current schema', () => {
   const r = core.migrate(V1);
-  assert.equal(r.ok, true);
+  assert.equal(r.ok, true, r.message);
   assert.equal(r.fromVersion, 1);
-  assert.equal(r.migrated, true);
   const s = r.state;
-  assert.equal(s.schemaVersion, core.SCHEMA_VERSION);
-  assert.equal(s.challenge.name, '75 Hard');
-  assert.equal(s.challenge.targetDays, 75);
-  assert.deepEqual(s.challenge.habits, [
-    { id: 'h1', name: 'Workout' },
-    { id: 'h2', name: 'Read' },
-    { id: 'h3', name: 'Water' }
-  ]);
-  assert.deepEqual(s.current.completedDates, ['2026-09-20', '2026-09-21']);
-  assert.deepEqual(s.current.checked, { date: '2026-09-22', habitIds: ['h1', 'h3'] });
-  assert.equal(s.current.number, 3);
-  assert.equal(s.attempts.length, 2);
-  assert.equal(s.attempts[1].reason, 'failed');
-  assert.equal(core.bestStreak(s), 12);
-  assert.deepEqual(core.validateState(s), []);
-});
-
-test('load migrates v1 localStorage data, keeps a backup and saves the upgrade', () => {
-  const raw = JSON.stringify(V1);
-  const storage = new FakeStorage({ [KEY]: raw });
-  const r = store.load(storage, NOW);
-  assert.equal(r.notice, null);
-  assert.equal(r.state.challenge.name, '75 Hard');
-  assert.equal(JSON.parse(storage.getItem(KEY)).schemaVersion, core.SCHEMA_VERSION);
-  const backups = storage.keys().filter((k) => k.startsWith(store.BACKUP_PREFIX + 'v1.'));
-  assert.equal(backups.length, 1);
-  assert.equal(storage.getItem(backups[0]), raw);
-  // Loading again is a no-op.
-  const again = store.load(storage, NOW);
-  assert.deepEqual(again.state, r.state);
-  assert.equal(storage.keys().length, 2);
-});
-
-test('an empty v1 object migrates to an empty state', () => {
-  const r = core.migrate({});
-  assert.equal(r.ok, true);
-  assert.deepEqual(r.state, core.emptyState());
+  assert.deepEqual(s.habits.map((h) => h.name), ['Workout', 'Read', 'Water']);
+  assert.deepEqual(s.days['2026-09-22'].done, ['h1', 'h3']);
+  assert.equal(stats.bestStreak(s, '2026-09-22'), 12);
+  assert.equal(s.days['2026-08-13'].done.length, 0, 'the gap between attempts is recorded as missed');
 });
 
 test('damaged v1 data is rejected rather than half-migrated', () => {
-  const r = core.migrate({ challengeName: 'x', habits: ['a'], startDate: 'yesterday', completedDays: [] });
-  assert.equal(r.ok, false);
+  assert.equal(core.migrate({ challengeName: 'x', habits: ['a'], startDate: 'yesterday', completedDays: [] }).ok, false);
 });
 
 /* ---------------- export / import ---------------- */
 
-test('export contains schemaVersion and the complete history', () => {
+test('export contains schemaVersion, the full history and computed stats', () => {
   const s = sampleState();
-  const doc = core.buildExport(s, NOW);
+  const today = '2026-09-05';
+  const doc = core.buildExport(s, NOW, stats.summary(s, today));
   assert.equal(doc.app, 'day-by-day');
   assert.equal(doc.schemaVersion, core.SCHEMA_VERSION);
   assert.equal(doc.exportedAt, NOW.toISOString());
-  assert.deepEqual(doc.challenge, s.challenge);
-  assert.deepEqual(doc.current, s.current);
-  assert.deepEqual(doc.attempts, s.attempts);
-  assert.equal(doc.bestStreak, 4);
+  assert.deepEqual(doc.habits, s.habits);
+  assert.deepEqual(doc.days, s.days);
+  assert.equal(doc.dailyRecords.length, 5);
+  assert.deepEqual(doc.dailyRecords[3], {
+    date: '2026-09-04',
+    habits: [{ id: 'h1', name: 'Workout', done: true }, { id: 'h2', name: 'Read', done: false }, { id: 'h3', name: 'Drink water', done: false }],
+    totalCompleted: 1,
+    totalPossible: 3,
+    percentage: 33,
+    lockedIn: false
+  });
+  assert.equal(doc.stats.bestStreak, 3);
+  assert.equal(doc.stats.totalLockedInDays, 3);
   assert.equal(core.exportFileName('2026-09-28'), 'day-by-day-backup-2026-09-28.json');
 });
 
-test('export then import round-trips', () => {
+test('export then import round-trips (computed fields are ignored)', () => {
   const s = sampleState();
-  const r = core.parseImport(JSON.stringify(core.buildExport(s, NOW)));
-  assert.equal(r.ok, true);
+  const r = core.parseImport(JSON.stringify(core.buildExport(s, NOW, stats.summary(s, '2026-09-05'))));
+  assert.equal(r.ok, true, r.message);
   assert.deepEqual(r.state, s);
+});
+
+test('old challenge backups can still be imported', () => {
+  const r = core.parseImport(JSON.stringify(Object.assign({ app: 'day-by-day', exportedAt: NOW.toISOString() }, v2Doc())));
+  assert.equal(r.ok, true, r.message);
+  assert.equal(r.state.habits.length, 2);
 });
 
 const BAD_IMPORTS = {
   'an empty file': ['', /empty/],
   'invalid JSON': ['{ nope', /not valid JSON/],
   'an array': ['[]', /not contain/],
-  'another app': [JSON.stringify({ app: 'other', schemaVersion: 2 }), /not exported from Day by Day/],
-  'no schemaVersion': [JSON.stringify({ challenge: null }), /schemaVersion/],
+  'another app': [JSON.stringify({ app: 'other', schemaVersion: 3 }), /not exported from Day by Day/],
+  'no schemaVersion': [JSON.stringify({ habits: [] }), /schemaVersion/],
   'a future schemaVersion': [JSON.stringify({ app: 'day-by-day', schemaVersion: 99 }), /version 99/],
-  'a damaged history': [
-    JSON.stringify(Object.assign(core.buildExport(newChallenge(START), NOW), { attempts: [{ number: 1 }] })),
+  'damaged history': [
+    JSON.stringify(Object.assign(core.buildExport(withHabits(START), NOW), { days: { [START]: { habits: [], done: ['h1'] } } })),
     /damaged/
   ]
 };
@@ -215,11 +258,8 @@ for (const [label, [text, message]] of Object.entries(BAD_IMPORTS)) {
 }
 
 test('a failed import leaves existing stored data untouched', () => {
-  // The app only calls store.save() after parseImport succeeds and the user
-  // confirms; this checks the pieces it relies on.
   const storage = new FakeStorage();
-  const s = sampleState();
-  store.save(storage, s);
+  store.save(storage, sampleState());
   const before = storage.getItem(KEY);
   for (const [text] of Object.values(BAD_IMPORTS)) {
     const r = core.parseImport(text);
@@ -227,10 +267,4 @@ test('a failed import leaves existing stored data untouched', () => {
     assert.throws(() => store.save(storage, r.state || {}));
   }
   assert.equal(storage.getItem(KEY), before);
-});
-
-test('importing a v1 file with a schemaVersion of 1 is migrated', () => {
-  const r = core.parseImport(JSON.stringify(Object.assign({ schemaVersion: 1 }, V1)));
-  assert.equal(r.ok, true);
-  assert.equal(r.state.challenge.name, '75 Hard');
 });

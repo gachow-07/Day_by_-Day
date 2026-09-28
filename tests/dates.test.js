@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { core, newChallenge, completeDays } = require('./helpers.js');
+const { core, stats, withHabits, play } = require('./helpers.js');
 
 test('validates date keys', () => {
   assert.equal(core.isValidDateKey('2026-09-28'), true);
@@ -56,50 +56,55 @@ test('leap years follow the Gregorian rules', () => {
   assert.equal(core.daysBetween('2028-01-01', '2029-01-01'), 366);
 });
 
-test('a streak runs through a month boundary without restarting', () => {
-  let s = newChallenge('2026-01-30');
-  s = completeDays(s, '2026-01-30', 4); // Jan 30, Jan 31, Feb 1, Feb 2
-  assert.deepEqual(s.current.completedDates, ['2026-01-30', '2026-01-31', '2026-02-01', '2026-02-02']);
-  const r = core.evaluateMissedDays(s, '2026-02-03');
-  assert.equal(r.restarted, false);
-  assert.equal(core.dayNumber(r.state, '2026-02-03'), 5);
+test('a streak runs through a month boundary', () => {
+  const s = play(withHabits('2026-01-30'), '2026-01-30', '✓✓✓✓'); // Jan 30 – Feb 2
+  assert.equal(stats.currentStreak(s, '2026-02-02'), 4);
+  assert.deepEqual(Object.keys(s.days).sort(), ['2026-01-30', '2026-01-31', '2026-02-01', '2026-02-02']);
 });
 
-test('a streak runs through New Year without restarting', () => {
-  let s = newChallenge('2026-12-30');
-  s = completeDays(s, '2026-12-30', 3); // Dec 30, Dec 31, Jan 1
-  assert.equal(core.evaluateMissedDays(s, '2027-01-02').restarted, false);
-  assert.equal(core.dayNumber(s, '2027-01-02'), 4);
+test('a streak runs through New Year', () => {
+  const s = play(withHabits('2026-12-30'), '2026-12-30', '✓✓✓'); // Dec 30 – Jan 1
+  assert.equal(stats.currentStreak(s, '2027-01-01'), 3);
+  // Next morning, before ticking anything, the streak is still alive.
+  assert.equal(stats.currentStreak(core.ensureDays(s, '2027-01-02').state, '2027-01-02'), 3);
 });
 
-test('missing New Year’s Eve restarts the attempt', () => {
-  let s = newChallenge('2026-12-29');
-  s = completeDays(s, '2026-12-29', 2); // Dec 29, Dec 30
-  const r = core.evaluateMissedDays(s, '2027-01-01');
-  assert.equal(r.restarted, true);
-  assert.equal(r.missedDate, '2026-12-31');
-  assert.equal(r.state.current.startDate, '2027-01-01');
+test('not opening the app on New Year’s Eve breaks the streak', () => {
+  const s = play(withHabits('2026-12-29'), '2026-12-29', '✓✓.✓'); // Dec 31 skipped
+  assert.equal(s.days['2026-12-31'].done.length, 0, 'the missed day is recorded as missed');
+  assert.equal(stats.currentStreak(s, '2027-01-01'), 1);
+  assert.equal(stats.bestStreak(s, '2027-01-01'), 2);
 });
 
 test('a streak runs through Feb 29 in a leap year', () => {
-  let s = newChallenge('2028-02-28');
-  s = completeDays(s, '2028-02-28', 3);
-  assert.deepEqual(s.current.completedDates, ['2028-02-28', '2028-02-29', '2028-03-01']);
-  assert.equal(core.evaluateMissedDays(s, '2028-03-02').restarted, false);
+  const s = play(withHabits('2028-02-28'), '2028-02-28', '✓✓✓');
+  assert.deepEqual(Object.keys(s.days).sort(), ['2028-02-28', '2028-02-29', '2028-03-01']);
+  assert.equal(stats.currentStreak(s, '2028-03-01'), 3);
 });
 
 test('skipping Feb 29 in a leap year counts as a missed day', () => {
-  let s = newChallenge('2028-02-27');
-  s = completeDays(s, '2028-02-27', 2); // Feb 27, Feb 28
-  const r = core.evaluateMissedDays(s, '2028-03-01');
-  assert.equal(r.restarted, true);
-  assert.equal(r.missedDate, '2028-02-29');
+  const s = play(withHabits('2028-02-27'), '2028-02-27', '✓✓.✓');
+  assert.equal(stats.dayState(s, '2028-02-29', '2028-03-01'), 'missed');
+  assert.equal(stats.currentStreak(s, '2028-03-01'), 1);
 });
 
 test('Feb 28 to Mar 1 is consecutive in a non-leap year', () => {
-  let s = newChallenge('2027-02-28');
-  s = completeDays(s, '2027-02-28', 1);
-  assert.equal(core.evaluateMissedDays(s, '2027-03-01').restarted, false);
-  s = completeDays(s, '2027-03-01', 1);
-  assert.equal(core.currentStreak(s), 2);
+  const s = play(withHabits('2027-02-28'), '2027-02-28', '✓✓');
+  assert.equal(stats.currentStreak(s, '2027-03-01'), 2);
+  assert.equal(s.days['2027-02-29'], undefined);
+});
+
+test('month grid starts on Sunday and covers the whole month', () => {
+  const s = withHabits('2026-09-01');
+  const grid = stats.monthGrid(s, 2026, 9, '2026-09-15'); // Sep 1 2026 is a Tuesday
+  assert.equal(grid[0][0].date, '2026-08-30');
+  assert.equal(grid[0][2].date, '2026-09-01');
+  assert.equal(grid[0][2].inMonth, true);
+  assert.equal(grid[0][0].inMonth, false);
+  const cells = grid.flat().filter((c) => c.inMonth);
+  assert.equal(cells.length, 30);
+  assert.equal(cells.find((c) => c.isToday).date, '2026-09-15');
+  assert.equal(cells.find((c) => c.date === '2026-09-20').state, 'future');
+  const feb = stats.monthGrid(s, 2028, 2, '2026-09-15').flat().filter((c) => c.inMonth);
+  assert.equal(feb.length, 29, 'leap February');
 });
