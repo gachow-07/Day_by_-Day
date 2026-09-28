@@ -90,7 +90,7 @@
     return {
       state: core.emptyState(),
       readOnly: false,
-      notice: reason + '. A copy was kept in this browser under "' + key + '". You can start a new challenge or import a backup.'
+      notice: reason + '. A copy was kept in this browser under "' + key + '". You can start fresh or import a backup.'
     };
   }
 

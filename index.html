@@ -2,28 +2,25 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Day by Day — a daily habit challenge tracker. Complete every habit, every day.">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Day by Day — a daily goal tracker. Check off every goal, every day, and stay Locked In.">
   <meta name="theme-color" content="#1d6b47">
   <title>Day by Day</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="css/styles.css?v=5">
-  <script src="js/theme.js?v=5"></script>
+  <link rel="stylesheet" href="css/styles.css?v=6">
+  <script src="js/theme.js?v=6"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
 
   <header class="app-header">
-    <div class="header-bar">
-      <fieldset class="theme-switch">
-        <legend class="visually-hidden">Theme</legend>
-        <label><input type="radio" name="theme" value="auto" checked><span>Auto</span></label>
-        <label><input type="radio" name="theme" value="light"><span>Light</span></label>
-        <label><input type="radio" name="theme" value="dark"><span>Dark</span></label>
-      </fieldset>
-    </div>
     <h1 class="brand">Day by Day</h1>
-    <p class="tagline">Every habit. Every day. No skipped days.</p>
+    <fieldset class="theme-switch">
+      <legend class="visually-hidden">Theme</legend>
+      <label><input type="radio" name="theme" value="auto" checked><span>Auto</span></label>
+      <label><input type="radio" name="theme" value="light"><span>Light</span></label>
+      <label><input type="radio" name="theme" value="dark"><span>Dark</span></label>
+    </fieldset>
   </header>
 
   <main id="main" tabindex="-1">
@@ -39,111 +36,209 @@
       <p class="notice">Day by Day needs JavaScript to run.</p>
     </noscript>
 
-    <!-- Setup: shown when there is no challenge -->
-    <section id="setup-view" class="card" aria-labelledby="setup-title" hidden>
-      <h2 id="setup-title">Start a challenge</h2>
-      <p class="muted">Pick your daily habits. Every one of them must be done every calendar day. Miss a day and you start again at Day 1.</p>
-      <form id="setup-form" novalidate>
-        <div id="setup-errors" class="form-errors" role="alert" tabindex="-1" hidden></div>
-
-        <div class="field">
-          <label for="challenge-name">Challenge name</label>
-          <input id="challenge-name" name="name" type="text" maxlength="120" autocomplete="off" value="75 Hard" required>
-        </div>
-
-        <div class="field">
-          <label for="challenge-days">Length in days</label>
-          <input id="challenge-days" name="targetDays" type="number" inputmode="numeric" min="1" max="1000" step="1" value="75" required>
-        </div>
-
-        <fieldset class="field">
-          <legend>Daily habits</legend>
-          <ol id="habit-inputs" class="habit-inputs"></ol>
-          <button type="button" id="add-habit" class="btn btn-secondary">+ Add habit</button>
-        </fieldset>
-
-        <button type="submit" class="btn btn-primary btn-block">Start Day 1</button>
-      </form>
-    </section>
-
-    <!-- Tracker: shown when a challenge exists -->
-    <section id="today-view" aria-labelledby="day-heading" hidden>
-      <div class="card day-card">
-        <p class="eyebrow"><span id="challenge-title"></span> · Attempt <span id="attempt-number"></span></p>
-        <h2 id="day-heading" class="day-heading"></h2>
-        <p id="today-date" class="muted"></p>
-        <div class="progress" id="progress" role="progressbar" aria-labelledby="progress-label" aria-valuemin="0">
-          <div class="progress-bar" id="progress-bar"></div>
-        </div>
-        <p id="progress-label" class="progress-label"></p>
-
-        <div id="active-panel">
-          <fieldset class="habits">
-            <legend>Today’s habits</legend>
-            <ul id="habit-list" class="habit-list"></ul>
-          </fieldset>
-          <button type="button" id="complete-day" class="btn btn-primary btn-block" aria-describedby="complete-hint"></button>
-          <p id="complete-hint" class="hint"></p>
-        </div>
-
-        <div id="finished-panel" class="finished" hidden>
-          <p class="finished-title">Challenge complete!</p>
-          <p id="finished-text"></p>
-          <button type="button" id="new-attempt" class="btn btn-primary btn-block">Start a new attempt</button>
-        </div>
+    <!-- ============ Today ============ -->
+    <section id="panel-today" role="tabpanel" aria-labelledby="tab-today" tabindex="-1">
+      <div id="streak-hero" class="hero" role="group" hidden>
+        <p class="hero-label"><span aria-hidden="true">🔥</span> Locked In</p>
+        <p class="hero-number"><span id="streak-count">0</span> <span id="streak-unit" class="hero-unit">Days</span></p>
+        <p class="hero-best">Best: <span id="best-streak">0 days</span></p>
       </div>
 
-      <section class="card" aria-labelledby="stats-title">
-        <h2 id="stats-title" class="section-title">Streaks</h2>
-        <dl class="stats">
-          <div><dt>Current streak</dt><dd id="stat-current">0</dd></div>
-          <div><dt>Best streak</dt><dd id="stat-best">0</dd></div>
-          <div><dt>Attempts</dt><dd id="stat-attempts">1</dd></div>
-        </dl>
-        <button type="button" id="report-failure" class="btn btn-danger-outline btn-block">I missed a habit today</button>
+      <section id="onboarding" class="card onboarding" aria-labelledby="onboarding-title" hidden>
+        <h2 id="onboarding-title">What does being Locked In look like for you?</h2>
+        <p class="muted">Add the daily goals you want to stay consistent with. Check them all off each day to build your streak.</p>
+        <form id="first-goal-form" class="add-form" novalidate>
+          <label for="first-goal" class="visually-hidden">Your first goal</label>
+          <input id="first-goal" type="text" maxlength="120" autocomplete="off" placeholder="e.g. Workout, Read, Drink water" aria-describedby="first-goal-error">
+          <button type="submit" class="btn btn-primary">+ Add Your First Goal</button>
+        </form>
+        <p id="first-goal-error" class="field-error" role="alert" hidden></p>
       </section>
 
-      <section class="card" aria-labelledby="history-title">
-        <h2 id="history-title" class="section-title">Previous attempts</h2>
-        <p id="history-empty" class="muted">No previous attempts yet. Keep it that way.</p>
-        <ol id="history-list" class="history-list" reversed></ol>
+      <section id="goals-card" class="card goals" aria-labelledby="goals-title" hidden>
+        <div class="goals-head">
+          <div>
+            <h2 id="goals-title" class="section-title">Today’s Goals</h2>
+            <p id="today-date" class="goals-date"></p>
+          </div>
+          <button type="button" id="edit-goals" class="btn btn-small btn-ghost" aria-haspopup="dialog">Edit</button>
+        </div>
+
+        <div id="goals-body">
+          <div class="goals-progress-row">
+            <p id="goals-status" class="goals-status" aria-live="polite"></p>
+          </div>
+          <div class="progress" id="goals-progress" role="progressbar" aria-labelledby="goals-title" aria-valuemin="0">
+            <div class="progress-bar" id="goals-progress-bar"></div>
+          </div>
+          <ul id="goal-list" class="goal-list"></ul>
+          <p id="goals-hint" class="hint"></p>
+        </div>
+
+        <div id="goals-empty" class="goals-empty" hidden>
+          <p class="muted">All your goals are paused, so nothing is due today. Days with no goals don’t count toward or against your streak.</p>
+          <button type="button" id="goals-empty-edit" class="btn btn-secondary">Edit goals</button>
+        </div>
+
+        <button type="button" id="add-goal-link" class="btn-link">+ Add a goal</button>
       </section>
     </section>
 
-    <!-- Account: only shown when sign-in is configured (js/firebase-config.js) -->
-    <section id="account-view" class="card" aria-labelledby="account-title" hidden>
-      <h2 id="account-title" class="section-title">Account</h2>
-      <div id="account-signed-out">
-        <p class="muted">Sign in to save your progress to your account and pick it up on your other devices. Signing in is optional.</p>
-        <button type="button" id="sign-in" class="btn btn-primary btn-block">Sign in with Google</button>
-      </div>
-      <div id="account-signed-in" hidden>
-        <p class="account-who">Signed in as <strong id="account-name"></strong></p>
-        <p id="sync-status" class="sync-status"></p>
-        <button type="button" id="sign-out" class="btn btn-secondary">Sign out</button>
-      </div>
-      <div id="account-error" class="form-errors" role="alert" hidden></div>
-    </section>
+    <!-- ============ Stats ============ -->
+    <section id="panel-stats" role="tabpanel" aria-labelledby="tab-stats" tabindex="-1" hidden>
+      <h2 class="visually-hidden">Stats</h2>
 
-    <section id="data-view" class="card" aria-labelledby="data-title">
-      <h2 id="data-title" class="section-title">Your data</h2>
-      <p id="data-description" class="muted">Everything is stored only in this browser. Export a backup to keep it safe or move it to another device.</p>
-      <div class="button-row">
-        <button type="button" id="export-data" class="btn btn-secondary">Export data</button>
-        <button type="button" id="import-data" class="btn btn-secondary">Import data</button>
-        <input type="file" id="import-file" accept="application/json,.json" class="visually-hidden" tabindex="-1" aria-hidden="true">
+      <div class="summary-grid">
+        <div class="stat-card">
+          <p class="stat-label"><span aria-hidden="true">🔥</span> Current Streak</p>
+          <p id="stat-current" class="stat-value">0 days</p>
+        </div>
+        <div class="stat-card">
+          <p class="stat-label"><span aria-hidden="true">🏆</span> Best Streak</p>
+          <p id="stat-best" class="stat-value">0 days</p>
+        </div>
+        <div class="stat-card">
+          <p class="stat-label"><span aria-hidden="true">✓</span> Locked In Days</p>
+          <p id="stat-total" class="stat-value">0</p>
+          <p id="stat-total-sub" class="stat-sub"></p>
+        </div>
+        <div class="stat-card">
+          <p class="stat-label"><span aria-hidden="true">%</span> Completion Rate</p>
+          <p id="stat-rate" class="stat-value">0%</p>
+          <p class="stat-sub">of all goals due</p>
+        </div>
       </div>
-      <div id="import-error" class="form-errors" role="alert" hidden></div>
-      <button type="button" id="reset-data" class="btn btn-link-danger" hidden>Delete challenge and all history</button>
+
+      <section class="card calendar-card" aria-labelledby="cal-title">
+        <div class="cal-head">
+          <button type="button" id="cal-prev" class="icon-btn" aria-label="Previous month">←</button>
+          <h2 id="cal-title" class="section-title cal-title"></h2>
+          <button type="button" id="cal-next" class="icon-btn" aria-label="Next month">→</button>
+        </div>
+        <div id="cal-grid" class="cal-grid"></div>
+        <ul class="cal-legend" aria-label="Calendar legend">
+          <li><span class="swatch is-locked" aria-hidden="true">✓</span>Locked In</li>
+          <li><span class="swatch is-partial" aria-hidden="true"></span>Partial</li>
+          <li><span class="swatch is-missed" aria-hidden="true"></span>Nothing done</li>
+          <li><span class="swatch is-none" aria-hidden="true"></span>Not tracked</li>
+          <li><span class="swatch is-today-key" aria-hidden="true"></span>Today</li>
+        </ul>
+        <div id="day-detail" class="day-detail" aria-live="polite" hidden></div>
+      </section>
+
+      <p id="stats-empty" class="card muted" hidden>Your stats and charts will appear here once you’ve tracked your first day.</p>
+
+      <div id="analytics">
+        <section class="card" aria-labelledby="analytics-title">
+          <h2 id="analytics-title" class="section-title">Habit Analytics</h2>
+
+          <div class="chart-head">
+            <h3 class="chart-title" id="chart-daily-title">Daily completion</h3>
+            <fieldset id="range-control" class="segmented">
+              <legend class="visually-hidden">Time range</legend>
+              <label><input type="radio" name="range" value="7"><span>7 Days</span></label>
+              <label><input type="radio" name="range" value="30" checked><span>30 Days</span></label>
+              <label><input type="radio" name="range" value="90"><span>90 Days</span></label>
+              <label><input type="radio" name="range" value="all"><span>All Time</span></label>
+            </fieldset>
+          </div>
+          <p id="chart-daily-caption" class="chart-caption"></p>
+          <div id="chart-daily" class="chart"></div>
+          <details class="data-table">
+            <summary>Show daily data</summary>
+            <table>
+              <thead><tr><th scope="col">Date</th><th scope="col" class="num">Goals</th><th scope="col" class="num">Completion</th></tr></thead>
+              <tbody id="chart-daily-table"></tbody>
+            </table>
+          </details>
+
+          <h3 class="chart-title chart-title-gap">Habit consistency</h3>
+          <p class="chart-caption">Share of days each goal was done, counting only the days it was a goal.</p>
+          <ul id="chart-habits" class="hbar-list"></ul>
+        </section>
+
+        <section class="card" aria-labelledby="habit-stats-title">
+          <h2 id="habit-stats-title" class="section-title">Goal stats</h2>
+          <ul id="habit-stats" class="habit-stats"></ul>
+        </section>
+      </div>
+
+      <!-- Account: only shown when sign-in is configured (js/firebase-config.js) -->
+      <section id="account-view" class="card" aria-labelledby="account-title" hidden>
+        <h2 id="account-title" class="section-title">Account</h2>
+        <div id="account-signed-out">
+          <p class="muted">Sign in to save your progress to your account and pick it up on your other devices. Signing in is optional.</p>
+          <button type="button" id="sign-in" class="btn btn-primary btn-block">Sign in with Google</button>
+        </div>
+        <div id="account-signed-in" hidden>
+          <p class="account-who">Signed in as <strong id="account-name"></strong></p>
+          <p id="sync-status" class="sync-status"></p>
+          <button type="button" id="sign-out" class="btn btn-secondary">Sign out</button>
+        </div>
+        <div id="account-error" class="form-errors" role="alert" hidden></div>
+      </section>
+
+      <section id="data-view" class="card" aria-labelledby="data-title">
+        <h2 id="data-title" class="section-title">Your data</h2>
+        <p id="data-description" class="muted">Everything is stored only in this browser. Export a backup to keep it safe or move it to another device.</p>
+        <div class="button-row">
+          <button type="button" id="export-data" class="btn btn-secondary">Export data</button>
+          <button type="button" id="import-data" class="btn btn-secondary">Import data</button>
+          <input type="file" id="import-file" accept="application/json,.json" class="visually-hidden" tabindex="-1" aria-hidden="true">
+        </div>
+        <div id="import-error" class="form-errors" role="alert" hidden></div>
+        <button type="button" id="reset-data" class="btn btn-link-danger" hidden>Delete all goals and history</button>
+      </section>
+
+      <footer class="app-footer">
+        <p id="footer-text">Day by Day works offline. No accounts, no tracking.</p>
+      </footer>
     </section>
   </main>
 
-  <footer class="app-footer">
-    <p id="footer-text">Day by Day works offline. No accounts, no tracking.</p>
-  </footer>
+  <nav class="tabbar" aria-label="Sections">
+    <div role="tablist" aria-label="Sections" class="tabbar-inner">
+      <button type="button" role="tab" id="tab-today" aria-controls="panel-today" aria-selected="true">
+        <span class="tab-icon" aria-hidden="true">✓</span>Today
+      </button>
+      <button type="button" role="tab" id="tab-stats" aria-controls="panel-stats" aria-selected="false" tabindex="-1">
+        <span class="tab-icon" aria-hidden="true">▦</span>Stats
+      </button>
+    </div>
+  </nav>
 
   <!-- Polite announcements for screen readers -->
   <div id="status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <dialog id="goals-dialog" class="dialog sheet" aria-labelledby="goals-dialog-title">
+    <div class="sheet-head">
+      <h2 id="goals-dialog-title" class="dialog-title">Edit goals</h2>
+      <button type="button" id="manage-done" class="btn btn-small btn-primary">Done</button>
+    </div>
+
+    <form id="add-goal-form" class="add-form" novalidate>
+      <label for="new-goal" class="visually-hidden">New goal</label>
+      <input id="new-goal" type="text" maxlength="120" autocomplete="off" placeholder="Add a goal">
+      <button type="submit" class="btn btn-primary">Add</button>
+    </form>
+    <p id="manage-error" class="field-error" role="alert" hidden></p>
+
+    <h3 class="sheet-section">Active</h3>
+    <p id="manage-active-empty" class="muted small" hidden>No active goals.</p>
+    <ul id="manage-active" class="manage-list"></ul>
+
+    <div id="manage-paused-section" hidden>
+      <h3 class="sheet-section">Paused</h3>
+      <ul id="manage-paused" class="manage-list"></ul>
+    </div>
+
+    <details id="manage-archived-section" class="sheet-archived" hidden>
+      <summary>Archived (<span id="manage-archived-count">0</span>)</summary>
+      <ul id="manage-archived" class="manage-list"></ul>
+    </details>
+
+    <p class="muted small sheet-note">Changes apply from today. Past days keep the goals and names they had, so your history and stats stay accurate.</p>
+  </dialog>
 
   <dialog id="confirm-dialog" class="dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message">
     <form method="dialog">
@@ -156,11 +251,12 @@
     </form>
   </dialog>
 
-  <script src="js/core.js?v=5"></script>
-  <script src="js/storage.js?v=5"></script>
-  <script src="js/sync.js?v=5"></script>
-  <script src="js/firebase-config.js?v=5"></script>
-  <script src="js/cloud.js?v=5"></script>
-  <script src="js/app.js?v=5"></script>
+  <script src="js/core.js?v=6"></script>
+  <script src="js/stats.js?v=6"></script>
+  <script src="js/storage.js?v=6"></script>
+  <script src="js/sync.js?v=6"></script>
+  <script src="js/firebase-config.js?v=6"></script>
+  <script src="js/cloud.js?v=6"></script>
+  <script src="js/app.js?v=6"></script>
 </body>
 </html>

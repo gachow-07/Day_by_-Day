@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const sync = require('../js/sync.js');
-const { core, newChallenge, completeDays, FakeStorage } = require('./helpers.js');
+const { core, withHabits, openOn, play, FakeStorage, v2Doc } = require('./helpers.js');
 
 const UID = 'user-a';
 const START = '2026-09-01';
@@ -13,9 +13,9 @@ function remoteOf(state, revision, clientUpdatedAt) {
   return sync.fromRemoteDoc(Object.assign(sync.toRemoteDoc(state, revision, new Date(clientUpdatedAt || '2026-09-10T10:00:00Z'))));
 }
 
-const threeDays = completeDays(newChallenge(START), START, 3);
-const fiveDays = completeDays(threeDays, '2026-09-04', 2);
-const otherChallenge = completeDays(newChallenge(START, { name: 'Other' }), START, 1);
+const threeDays = play(withHabits(START), START, '✓✓✓');
+const fiveDays = play(threeDays, '2026-09-04', '✓✓');
+const otherChallenge = play(withHabits(START, ['Something else']), START, '✓');
 
 /* ---------------- metadata ---------------- */
 
@@ -46,7 +46,7 @@ test('missing, damaged and newer account documents are recognised', () => {
   assert.deepEqual(sync.fromRemoteDoc(null), { exists: false });
   assert.equal(sync.fromRemoteDoc({ revision: 1 }).ok, false);
   const broken = sync.toRemoteDoc(threeDays, 1);
-  broken.state.current.completedDates = ['2026-01-01'];
+  broken.state.days['2026-09-01'].done = ['nobody'];
   assert.match(sync.fromRemoteDoc(broken).message, /damaged/);
   const newer = { state: { schemaVersion: 99 }, revision: 1 };
   assert.match(sync.fromRemoteDoc(newer).message, /newer version/);
@@ -105,7 +105,7 @@ test('a device that is behind and only auto-restarted takes the account’s newe
   // Device B last synced at 3 days, then sat unused; opening it restarts
   // the attempt locally. That automatic restart is not a user change, so
   // it must not beat device A's real progress.
-  const stale = core.evaluateMissedDays(threeDays, '2026-09-06').state;
+  const stale = openOn(threeDays, '2026-09-06'); // back-fills Sep 4–5 as missed
   const meta = sync.markSynced(sync.emptyMeta(), UID, 4);
   const d = sync.decide({ local: stale, meta, remote: remoteOf(fiveDays, 6), uid: UID });
   assert.equal(d.action, 'download');
@@ -128,4 +128,12 @@ test('an unreadable account copy is never overwritten', () => {
     assert.equal(d.action, 'blocked');
     assert.ok(d.message);
   }
+});
+
+test('an account still holding old challenge data is upgraded on download', () => {
+  const remote = sync.fromRemoteDoc({ schemaVersion: 2, state: v2Doc(), revision: 3, clientUpdatedAt: '' });
+  assert.equal(remote.ok, true, remote.message);
+  assert.equal(remote.state.schemaVersion, core.SCHEMA_VERSION);
+  const d = sync.decide({ local: EMPTY, meta: sync.emptyMeta(), remote, uid: UID });
+  assert.equal(d.action, 'download');
 });
