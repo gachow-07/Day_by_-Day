@@ -56,11 +56,17 @@ The app has three sections: a left sidebar on screens 768px and wider, and a bot
 
 ### Managing goals
 
-**Edit goals** lists your goals. Drag a handle to reorder (or focus it and use ↑/↓), and use **Edit** to open a goal. The goal form has: name, an optional icon and colour, a **schedule** (every day, weekdays, selected days, or a number of times per week), an optional **reminder** time, and status actions (**Pause**/**Resume**, **Archive** or **Delete**) with a plain explanation of each.
+**Edit goals** lists your goals. Drag a handle to reorder (or focus it and use ↑/↓), and use **Edit** to open a goal. The goal form has: name, an optional icon and colour, a **schedule** (every day, weekdays, selected days, or a number of times per week), an optional **reminder** time, an optional **workout split**, and status actions (**Pause**/**Resume**, **Archive** or **Delete**) with a plain explanation of each.
 
 - Changes apply **from today**. Every day keeps its own record of which goals were required and what they were called, so renaming, pausing or removing a goal never changes past days or their stats, and a new goal never counts against days before it existed.
 - Removing a goal that has history **archives** it: it leaves today's list but stays in history and Stats, and can be restored. A goal with no history yet (for example a typo added today) is deleted outright.
 - Up to 20 active goals (the planned Free plan allows 5; see Plans).
+
+### Workout splits
+
+Turn on **Rotate through a workout split** in a goal's form and list the workouts in order, one per line (for example Legs, Chest, Back, Shoulders), then pick today's workout. Each day the goal is due, Today shows that day's workout on the goal, and the split moves on to the next one. Days the goal isn't scheduled are skipped, so leave rest days out of the schedule. For a times-per-week goal the split moves on each time you check it off instead.
+
+Did a different workout? Tap the **⋯** button in the goal's top-right corner and pick what you actually did. The two workouts swap places: today becomes the one you did, and the one you were meant to do moves to the day that workout was planned. For example, on leg day with shoulders planned for Wednesday, choosing Shoulders makes today shoulder day and moves legs to Wednesday. Choosing the original workout again swaps them back. The menu shows when each workout is next planned, and **Edit split** opens the goal form. Each day's record keeps the workout done that day, and it appears in the calendar's day details and in exports.
 
 ### Reminders
 
@@ -96,6 +102,7 @@ The tests in `tests/` cover:
 - migrating older saved data (schema 3, the old challenge format and the original prototype) with identical stats, and export/import validation
 - schedules (weekdays, selected days, times per week), neutral unscheduled days, flexible goals not affecting Locked In, weekly goal stats, drag reordering, daily focus and week start
 - insights and their data minimums: week-over-week change, strongest and weakest weekday, biggest opportunity
+- workout splits: rotation on due days only and over many weeks, times-per-week splits, swapping a workout (and swapping back), re-anchoring when the schedule changes, validation, the v4 → 5 migration, and workouts in day details and exports
 - plan entitlements (Early access grants everything; Free and Pro limits)
 - theme preference handling (fallback to Auto, blocked storage)
 - sync decisions: first-sign-in upload, fresh-device download, live changes, conflicts, stale devices, unreadable account data
@@ -146,22 +153,26 @@ If you are not signed in, everything lives in this browser only. Clearing site d
 
 ### Saved-data format and migrations
 
-Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaVersion` field. The current version is **4**:
+Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaVersion` field. The current version is **5**:
 
 ```js
 {
-  schemaVersion: 4,
+  schemaVersion: 5,
   habits: [{
     id: 'h1', name: 'Workout', createdOn: '2026-09-01', status: 'active', archivedOn: null,
     icon: 'dumbbell',              // Lucide icon name or null
     color: 'jade',                 // jade | teal | sky | indigo | violet | rose | amber | slate | null
     schedule: { type: 'daily' },   // | { type: 'weekdays' } | { type: 'days', days: [1, 3, 5] } | { type: 'weekly', times: 3 }
-    reminder: '07:30'              // 'HH:MM' or null
+    reminder: '07:30',             // 'HH:MM' or null
+    split: { workouts: ['Legs', 'Chest', 'Back'], start: '2026-09-01', offset: 0 }
+                                   // or null. The day the goal is due on `start` gets workouts[offset],
+                                   // and each later due day (or, for times-per-week goals, each day
+                                   // after one it was done) the next workout.
   }],
   days: {
-    '2026-09-01': { habits: [{ id: 'h1', name: 'Workout' }, { id: 'h2', name: 'Run', flex: true, target: 3 }], done: ['h1'] }
+    '2026-09-01': { habits: [{ id: 'h1', name: 'Workout', workout: 'Legs' }, { id: 'h2', name: 'Run', flex: true, target: 3 }], done: ['h1'] }
     // one record per date: the goals shown that day, with their names then, and which were done.
-    // flex entries (times per week) don't count toward Locked In.
+    // flex entries (times per week) don't count toward Locked In. workout is that day's split workout.
   },
   focus: { '2026-09-01': 'Finish the essay draft' },   // optional daily intention
   settings: { weekStart: 0 }                           // 0 = Sunday, 1 = Monday
@@ -170,6 +181,7 @@ Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaV
 
 Streaks and all statistics are calculated from `days` (see `js/stats.js`); no counters are stored.
 
+- **Version 4 → 5:** goals gain `split: null` (no workout split). Nothing else changes. The original is first copied to `day-by-day.backup.v4.<timestamp>`.
 - **Version 3 → 4:** existing goals become "every day" goals with no icon, colour or reminder, and daily records are untouched, so every streak and statistic is exactly the same (a test checks this). The original is first copied to `day-by-day.backup.v3.<timestamp>`. An account still holding version 3 data is converted when it's downloaded and saved back as version 4 on your next change. A device still running an older app version is told to reload.
 
 - **Version 2 → 3** (the old fixed-length challenge format): the challenge's habits become goals. Every day the old app recorded as complete, in any attempt, becomes a fully done record, so old streaks and your best streak carry over. Days the old app knew were missed or failed become days with nothing done (it didn't store partial progress for them), and today's ticks are kept. The original is first copied to `day-by-day.backup.v2.<timestamp>`.

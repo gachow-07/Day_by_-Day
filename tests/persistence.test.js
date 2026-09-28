@@ -130,8 +130,8 @@ test('challenge data (v2) becomes ongoing habits with day-by-day history', () =>
   assert.equal(r.fromVersion, 2);
   const s = r.state;
   assert.deepEqual(s.habits, [
-    { id: 'h1', name: 'Workout', createdOn: '2026-09-01', status: 'active', archivedOn: null, icon: null, color: null, schedule: { type: 'daily' }, reminder: null },
-    { id: 'h2', name: 'Read', createdOn: '2026-09-01', status: 'active', archivedOn: null, icon: null, color: null, schedule: { type: 'daily' }, reminder: null }
+    { id: 'h1', name: 'Workout', createdOn: '2026-09-01', status: 'active', archivedOn: null, icon: null, color: null, schedule: { type: 'daily' }, reminder: null, split: null },
+    { id: 'h2', name: 'Read', createdOn: '2026-09-01', status: 'active', archivedOn: null, icon: null, color: null, schedule: { type: 'daily' }, reminder: null, split: null }
   ]);
   // Attempt 1: Sep 1–3 done, Sep 4 missed; attempt 2 began Sep 5: Sep 5–6 done; Sep 7 half-done.
   assert.deepEqual(Object.keys(s.days).sort(), ['2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04', '2026-09-05', '2026-09-06', '2026-09-07']);
@@ -293,7 +293,7 @@ test('schema 3 data upgrades to 4 without changing any record or statistic', () 
   const r = core.migrate(old);
   assert.equal(r.ok, true, r.message);
   assert.equal(r.fromVersion, 3);
-  assert.equal(r.state.schemaVersion, 4);
+  assert.equal(r.state.schemaVersion, core.SCHEMA_VERSION);
   assert.deepEqual(r.state.days, old.days, 'daily records are untouched');
   assert.deepEqual(r.state.habits.map((h) => [h.id, h.name, h.status, h.archivedOn]), [['h1', 'Workout', 'active', null], ['h2', 'Read', 'archived', '2026-09-04']]);
   assert.ok(r.state.habits.every((h) => h.schedule.type === 'daily' && h.icon === null && h.color === null && h.reminder === null));
@@ -308,7 +308,7 @@ test('load upgrades schema 3 localStorage data and keeps a backup', () => {
   const storage = new FakeStorage({ [KEY]: raw });
   const r = store.load(storage, NOW);
   assert.equal(r.notice, null);
-  assert.equal(JSON.parse(storage.getItem(KEY)).schemaVersion, 4);
+  assert.equal(JSON.parse(storage.getItem(KEY)).schemaVersion, core.SCHEMA_VERSION);
   const backup = storage.keys().find((k) => k.startsWith(store.BACKUP_PREFIX + 'v3.'));
   assert.equal(storage.getItem(backup), raw);
 });
@@ -316,7 +316,7 @@ test('load upgrades schema 3 localStorage data and keeps a backup', () => {
 test('schema 3 backups can still be imported', () => {
   const r = core.parseImport(JSON.stringify(Object.assign({ app: 'day-by-day' }, v3Doc())));
   assert.equal(r.ok, true, r.message);
-  assert.equal(r.state.schemaVersion, 4);
+  assert.equal(r.state.schemaVersion, core.SCHEMA_VERSION);
 });
 
 const BAD_V4 = {

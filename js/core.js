@@ -24,7 +24,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  var SCHEMA_VERSION = 4;
+  var SCHEMA_VERSION = 5;
   var APP_ID = 'day-by-day';
   var DAY_MS = 24 * 60 * 60 * 1000;
   var MIN_YEAR = 1970;
@@ -37,6 +37,8 @@
   var HABIT_STATUSES = ['active', 'paused', 'archived'];
   var GOAL_COLORS = ['jade', 'teal', 'sky', 'indigo', 'violet', 'rose', 'amber', 'slate'];
   var MAX_FOCUS_LENGTH = 140;
+  var MAX_WORKOUTS = 14;
+  var MAX_WORKOUT_LENGTH = 40;
   var TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
   var ICON_RE = /^[a-z0-9-]{1,32}$/;
   var DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -109,18 +111,23 @@
   /* ------------------------------------------------------------------ */
 
   /*
-   * State (schema 4)
-   *   habits: [{ id, name, createdOn, status, archivedOn, icon, color, schedule, reminder }]
+   * State (schema 5)
+   *   habits: [{ id, name, createdOn, status, archivedOn, icon, color, schedule, reminder, split }]
    *     status is 'active', 'paused' or 'archived'; array order is display order.
    *     icon: a Lucide icon name or null; color: one of GOAL_COLORS or null.
    *     schedule: { type: 'daily' } | { type: 'weekdays' }
    *             | { type: 'days', days: [0-6, Sunday = 0] } | { type: 'weekly', times: 1-6 }
    *     reminder: 'HH:MM' or null.
-   *   days: { 'YYYY-MM-DD': { habits: [{ id, name, flex?, target? }], done: [id] } }
+   *     split: null or { workouts: [name], start: date, offset: n }, a workout
+   *       rotation: each day the goal is due takes the next workout, and the
+   *       day it is due on `start` gets workouts[offset]. Times-per-week goals
+   *       move on to the next workout after each day they're done.
+   *   days: { 'YYYY-MM-DD': { habits: [{ id, name, flex?, target?, workout? }], done: [id] } }
    *     One record per calendar date: a snapshot of the goals shown that day
    *     (with their names at the time) and which were done. Goals with
    *     flex: true and target: N (N times a week) can be ticked but are not
    *     required, so they don't decide whether the day is Locked In.
+   *     workout is the split workout the goal had that day.
    *     Past records are never rewritten when goals change later. Only
    *     today's record follows the current goal list.
    *   focus: { 'YYYY-MM-DD': 'text' }  optional daily intention
@@ -170,6 +177,94 @@
       return { schedule: { type: 'weekly', times: times } };
     }
     return { error: 'Choose how often this goal repeats.' };
+  }
+
+  /**
+   * Normalise and validate a workout split from the goal form:
+   * { workouts: [name], current: index of the next workout } or null.
+   * `today` anchors the rotation. Returns { split } or { error }.
+   */
+  function cleanSplit(input, today) {
+    if (input === null) return { split: null };
+    var workouts = Array.isArray(input && input.workouts)
+      ? input.workouts.map(cleanName).filter(function (w) { return w; })
+      : [];
+    if (workouts.length < 2) return { error: 'Add at least two workouts to the split, one per line.' };
+    if (workouts.length > MAX_WORKOUTS) return { error: 'A split can have up to ' + MAX_WORKOUTS + ' workouts.' };
+    for (var i = 0; i < workouts.length; i++) {
+      if (workouts[i].length > MAX_WORKOUT_LENGTH) return { error: 'Workout names must be ' + MAX_WORKOUT_LENGTH + ' characters or fewer.' };
+    }
+    var current = Number(input.current || 0);
+    if (!Number.isInteger(current) || current < 0 || current >= workouts.length) current = 0;
+    return { split: { workouts: workouts, start: today, offset: current } };
+  }
+
+  function validSplit(sp) {
+    if (sp === null) return true;
+    if (!isPlainObject(sp) || !Array.isArray(sp.workouts) || !isValidDateKey(sp.start)) return false;
+    var n = sp.workouts.length;
+    if (n < 2 || n > MAX_WORKOUTS || !Number.isInteger(sp.offset) || sp.offset < 0 || sp.offset >= n) return false;
+    return sp.workouts.every(function (w) { return typeof w === 'string' && cleanName(w) === w && w && w.length <= MAX_WORKOUT_LENGTH; });
+  }
+
+  /**
+   * How many times the split has moved on between `from` (inclusive) and
+   * `to` (exclusive): the days the goal was due, or for times-per-week
+   * goals the days it was done.
+   */
+  function splitSteps(state, habit, from, to) {
+    var n = daysBetween(from, to);
+    if (n <= 0) return 0;
+    var sch = habit.schedule || DAILY;
+    if (sch.type === 'daily') return n;
+    if (sch.type === 'weekly') {
+      return Object.keys(state.days).filter(function (d) {
+        return d >= from && d < to && state.days[d].done.indexOf(habit.id) >= 0;
+      }).length;
+    }
+    var perWeek = 0;
+    for (var k = 0; k < 7; k++) if (scheduleOn(habit, addDays(from, k))) perWeek++;
+    var full = Math.floor(n / 7);
+    var steps = full * perWeek;
+    for (var d = full * 7; d < n; d++) if (scheduleOn(habit, addDays(from, d))) steps++;
+    return steps;
+  }
+
+  /** Index in the split of the workout for `date` (or the next due day), or -1. */
+  function splitIndex(state, habit, date) {
+    var sp = habit && habit.split;
+    if (!sp || date < sp.start) return -1;
+    return (sp.offset + splitSteps(state, habit, sp.start, date)) % sp.workouts.length;
+  }
+
+  /** The workout a goal has on `date`, or null when it has no split. */
+  function workoutOn(state, habit, date) {
+    var i = splitIndex(state, habit, date);
+    return i < 0 ? null : habit.split.workouts[i];
+  }
+
+  /**
+   * The rest of the rotation after today, in order: [{ index, workout, date }].
+   * `date` is when it's planned, or null for times-per-week goals, where the
+   * next workout comes after the next day the goal is done.
+   */
+  function upcomingWorkouts(state, id, today) {
+    var h = findHabit(state, id);
+    var i = splitIndex(state, h, today);
+    if (i < 0) return [];
+    var n = h.split.workouts.length;
+    var flex = h.schedule.type === 'weekly';
+    var out = [];
+    var d = today;
+    for (var k = 1; k < n; k++) {
+      var date = null;
+      if (!flex) {
+        do { d = addDays(d, 1); } while (!scheduleOn(h, d));
+        date = d;
+      }
+      out.push({ index: (i + k) % n, workout: h.split.workouts[(i + k) % n], date: date });
+    }
+    return out;
   }
 
   function clone(value) {
@@ -252,7 +347,10 @@
     activeHabits(state).forEach(function (h) {
       var how = scheduleOn(h, date);
       if (!how) return;
-      out.push(how === 'flex' ? { id: h.id, name: h.name, flex: true, target: h.schedule.times } : { id: h.id, name: h.name });
+      var entry = how === 'flex' ? { id: h.id, name: h.name, flex: true, target: h.schedule.times } : { id: h.id, name: h.name };
+      var workout = workoutOn(state, h, date);
+      if (workout) entry.workout = workout;
+      out.push(entry);
     });
     return out;
   }
@@ -331,6 +429,32 @@
     return result(next, { lockedIn: recordSummary(r).lockedIn });
   }
 
+  /**
+   * Record that today's workout was `workout` instead of the planned one.
+   * The two trade places in the rotation: today becomes `workout`, and the
+   * planned workout moves to the day `workout` was coming up next.
+   * Returns { ok, state, planned, movedTo: { index, date } }.
+   */
+  function swapWorkout(state, habitId, workout, today) {
+    var h = findHabit(state, habitId);
+    var rec = state.days[today];
+    if (!h || !h.split || h.status !== 'active' || !rec || !rec.habits.some(function (e) { return e.id === habitId; })) {
+      return failure(state, 'not-today', 'That goal has no workout today.');
+    }
+    var i = splitIndex(state, h, today);
+    var planned = h.split.workouts[i];
+    var match = upcomingWorkouts(state, habitId, today).filter(function (u) { return u.workout === workout; })[0];
+    if (!match) {
+      return workout === planned ? result(state, { unchanged: true, planned: planned })
+        : failure(state, 'unknown-workout', 'That workout isn’t in this split.');
+    }
+    var next = clone(state);
+    var ws = findHabit(next, habitId).split.workouts;
+    ws[i] = workout;
+    ws[match.index] = planned;
+    return result(syncTodayRecord(next, today), { planned: planned, movedTo: { index: match.index, date: match.date } });
+  }
+
   /* ------------------------------------------------------------------ */
   /* Managing habits                                                     */
   /* ------------------------------------------------------------------ */
@@ -339,7 +463,7 @@
    * Validate optional goal details (icon, color, schedule, reminder).
    * Returns { details } with cleaned values for the keys present, or { error }.
    */
-  function cleanDetails(opts) {
+  function cleanDetails(opts, today) {
     var out = {};
     if (!opts) return { details: out };
     if (opts.icon !== undefined) {
@@ -359,13 +483,18 @@
       if (opts.reminder !== null && opts.reminder !== '' && !TIME_RE.test(opts.reminder)) return { error: 'Enter a reminder time like 08:30.' };
       out.reminder = opts.reminder || null;
     }
+    if (opts.split !== undefined) {
+      var sp = cleanSplit(opts.split, today);
+      if (sp.error) return { error: sp.error };
+      out.split = sp.split;
+    }
     return { details: out };
   }
 
   function addHabit(state, name, today, opts) {
     var error = habitNameError(name);
     if (error) return failure(state, 'invalid-name', error);
-    var details = cleanDetails(opts);
+    var details = cleanDetails(opts, today);
     if (details.error) return failure(state, 'invalid-details', details.error);
     if (activeHabits(state).length >= MAX_ACTIVE_HABITS) {
       return failure(state, 'too-many', 'You can have up to ' + MAX_ACTIVE_HABITS + ' active goals.');
@@ -376,7 +505,7 @@
     var next = clone(state);
     var id = nextHabitId(next);
     var habit = { id: id, name: cleanName(name), createdOn: today, status: 'active', archivedOn: null,
-      icon: null, color: null, schedule: { type: 'daily' }, reminder: null };
+      icon: null, color: null, schedule: { type: 'daily' }, reminder: null, split: null };
     Object.keys(details.details).forEach(function (k) { habit[k] = details.details[k]; });
     next.habits.push(habit);
     return result(syncTodayRecord(next, today), { id: id });
@@ -394,11 +523,16 @@
       var error = habitNameError(c.name);
       if (error) return failure(state, 'invalid-name', error);
     }
-    var details = cleanDetails(c);
+    var details = cleanDetails(c, today);
     if (details.error) return failure(state, 'invalid-details', details.error);
     var next = clone(state);
     var h = findHabit(next, id);
     if (c.name !== undefined) h.name = cleanName(c.name);
+    // A new schedule keeps the split where it is: re-anchor it on today.
+    if (h.split && details.details.split === undefined && details.details.schedule &&
+        JSON.stringify(details.details.schedule) !== JSON.stringify(h.schedule)) {
+      h.split = { workouts: h.split.workouts, start: today, offset: Math.max(0, splitIndex(state, h, today)) };
+    }
     Object.keys(details.details).forEach(function (k) { h[k] = details.details[k]; });
     return result(syncTodayRecord(next, today), {});
   }
@@ -554,6 +688,7 @@
         var sch = isPlainObject(h.schedule) ? cleanSchedule(h.schedule) : { error: true };
         if (sch.error || JSON.stringify(sch.schedule) !== JSON.stringify(h.schedule)) err(label + '.schedule is invalid.');
         if (h.reminder !== null && !(typeof h.reminder === 'string' && TIME_RE.test(h.reminder))) err(label + '.reminder is invalid.');
+        if (!validSplit(h.split)) err(label + '.split is invalid.');
       });
       if (active > MAX_ACTIVE_HABITS) err('Too many active habits.');
     }
@@ -572,8 +707,10 @@
       if (rec.habits.length > MAX_ACTIVE_HABITS) err(label + ' has too many habits.');
       var recIds = [];
       rec.habits.forEach(function (h) {
+        if (!isPlainObject(h)) { err(label + ' has an invalid habit.'); return; }
         var badFlex = h.flex !== undefined && (h.flex !== true || !Number.isInteger(h.target) || h.target < 1 || h.target > 6);
-        if (!isPlainObject(h) || typeof h.id !== 'string' || !validName(h.name) || badFlex || (h.flex === undefined && h.target !== undefined)) {
+        var badWorkout = h.workout !== undefined && !(typeof h.workout === 'string' && h.workout.trim() && h.workout.length <= MAX_WORKOUT_LENGTH);
+        if (typeof h.id !== 'string' || !validName(h.name) || badFlex || badWorkout || (h.flex === undefined && h.target !== undefined)) {
           err(label + ' has an invalid habit.');
           return;
         }
@@ -705,6 +842,8 @@
    *       daily records, daily focus and settings (see emptyState). Existing
    *       goals become "every day" goals, so every record and statistic is
    *       unchanged.
+   *   5 — Adds an optional workout split to goals (split, null for existing
+   *       goals) and the day's workout to daily records.
    *
    * To add version N+1: bump SCHEMA_VERSION and add MIGRATIONS[N].
    */
@@ -833,6 +972,18 @@
         focus: {},
         settings: { weekStart: 0 }
       };
+    },
+
+    4: function v4ToV5(old) {
+      if (!isPlainObject(old)) throw new Error('Saved data is not an object.');
+      if (!Array.isArray(old.habits)) throw new Error('habits must be a list.');
+      var next = clone(old);
+      next.schemaVersion = 5;
+      next.habits = next.habits.map(function (h) {
+        if (isPlainObject(h) && h.split === undefined) h.split = null;
+        return h;
+      });
+      return next;
     }
   };
 
@@ -894,6 +1045,7 @@
         habits: rec.habits.map(function (h) {
           var item = { id: h.id, name: h.name, done: rec.done.indexOf(h.id) >= 0 };
           if (h.flex) item.flexible = true;
+          if (h.workout) item.workout = h.workout;
           return item;
         }),
         totalCompleted: s.completed,
@@ -974,6 +1126,13 @@
     setWeekStart: setWeekStart,
     scheduleOn: scheduleOn,
     cleanSchedule: cleanSchedule,
+    MAX_WORKOUTS: MAX_WORKOUTS,
+    MAX_WORKOUT_LENGTH: MAX_WORKOUT_LENGTH,
+    cleanSplit: cleanSplit,
+    splitIndex: splitIndex,
+    workoutOn: workoutOn,
+    upcomingWorkouts: upcomingWorkouts,
+    swapWorkout: swapWorkout,
     moveHabit: moveHabit,
     setHabitStatus: setHabitStatus,
     habitHistoryDates: habitHistoryDates,
