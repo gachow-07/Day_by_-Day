@@ -10,6 +10,8 @@
 
   var core = window.DayByDayCore;
   var store = window.DayByDayStorage;
+  var sync = window.DayByDaySync;
+  var cloud = window.DayByDayCloud;
 
   var DEFAULT_HABITS = [
     'Follow a diet (no cheat meals, no alcohol)',
@@ -70,20 +72,35 @@
     statusTimer = setTimeout(function () { el.textContent = message; }, 50);
   }
 
-  function showNotice(message) {
+  var noticeAction = null;
+
+  /** Show the notice banner, optionally with one action button { label, run }. */
+  function showNotice(message, action) {
     $('notice-text').textContent = message;
+    noticeAction = action || null;
+    var btn = $('notice-action');
+    btn.hidden = !noticeAction;
+    btn.textContent = noticeAction ? noticeAction.label : '';
     $('notice').hidden = false;
   }
 
   function hideNotice() {
     $('notice').hidden = true;
     $('notice-text').textContent = '';
+    noticeAction = null;
+    $('notice-action').hidden = true;
   }
 
   /* ---------------- Persistence ---------------- */
 
-  /** Save and adopt a new state. Returns false (and changes nothing) on failure. */
-  function commit(next) {
+  /**
+   * Save and adopt a new state. Returns false (and changes nothing) on failure.
+   * opts.auto marks changes the app makes by itself (missed-day restarts):
+   * those are not pushed to the account, because every device works them
+   * out the same way, and a device that is behind must not overwrite newer
+   * progress from another device.
+   */
+  function commit(next, opts) {
     if (readOnly) {
       showNotice('Saving is disabled on this device, so that change was not kept. See the message above for details.');
       return false;
@@ -96,6 +113,7 @@
     }
     state = next;
     render();
+    if (!(opts && opts.auto)) cloudChanged();
     return true;
   }
 
@@ -109,8 +127,13 @@
   }
 
   function evaluate() {
+    if (waitingForAccount) {
+      // Check for missed days only once the account's latest copy has arrived.
+      evaluatePending = true;
+      return;
+    }
     var r = core.evaluateMissedDays(state, today);
-    if (r.restarted && commit(r.state)) {
+    if (r.restarted && commit(r.state, { auto: true })) {
       var last = r.state.attempts[r.state.attempts.length - 1];
       var msg = 'You missed ' + formatDate(r.missedDate, true) + ', so attempt ' + last.number + ' ended after ' +
         plural(last.daysCompleted, 'day') + '. Attempt ' + r.state.current.number + ' starts today at Day 1.';
@@ -263,6 +286,10 @@
     var box = event.target;
     if (!box.dataset || !box.dataset.habitId) return;
     checkForNewDay();
+    if (holdForAccount()) {
+      box.checked = !box.checked;
+      return;
+    }
     var r = core.setHabitChecked(state, box.dataset.habitId, box.checked, today);
     if (!r.ok) {
       box.checked = !box.checked;
@@ -282,6 +309,7 @@
 
   function onCompleteDay() {
     checkForNewDay();
+    if (holdForAccount()) return;
     var r = core.completeDay(state, today);
     if (!r.ok) {
       announce(r.message);
@@ -301,6 +329,7 @@
 
   function onReportFailure() {
     checkForNewDay();
+    if (holdForAccount()) return;
     var cur = state.current;
     confirmDialog({
       title: 'Restart at Day 1?',
@@ -451,12 +480,16 @@
   /* ---------------- Export / import / reset ---------------- */
 
   function onExport() {
-    var doc = core.buildExport(state, new Date());
+    downloadBackup(state, core.exportFileName(today));
+  }
+
+  function downloadBackup(data, fileName) {
+    var doc = core.buildExport(data, new Date());
     var blob = new Blob([JSON.stringify(doc, null, 2) + '\n'], { type: 'application/json' });
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.download = core.exportFileName(today);
+    a.download = fileName;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -553,6 +586,230 @@
     });
   }
 
+  /* ---------------- Account sign-in and sync ---------------- */
+
+  var cloudUser = null;
+  var syncMeta = sync.readMeta(storage);
+  var knownRemoteRevision = 0;
+  var syncBlocked = false;
+  var pushTimer = null;
+  var waitingForAccount = false;
+  var evaluatePending = false;
+
+  function setSyncStatus(kind, text) {
+    var el = $('sync-status');
+    el.dataset.state = kind;
+    el.textContent = text;
+  }
+
+  function showAccountError(message) {
+    var box = $('account-error');
+    box.textContent = message;
+    box.hidden = !message;
+  }
+
+  function saveMeta(meta) {
+    syncMeta = meta;
+    sync.writeMeta(storage, meta);
+  }
+
+  /**
+   * True (and tells the user) when an action must wait: the account's latest
+   * copy hasn't arrived yet and this device's copy looks out of date.
+   */
+  function holdForAccount() {
+    if (!waitingForAccount || !core.evaluateMissedDays(state, today).restarted) return false;
+    announce('Checking your account for newer progress. Try again in a moment.');
+    $('complete-hint').textContent = 'Checking your account for newer progress…';
+    return true;
+  }
+
+  function stopWaitingForAccount() {
+    if (!waitingForAccount) return;
+    waitingForAccount = false;
+    if (evaluatePending) {
+      evaluatePending = false;
+      evaluate();
+      render();
+    }
+  }
+
+  function renderAccount() {
+    var signedIn = !!cloudUser;
+    $('account-signed-out').hidden = signedIn;
+    $('account-signed-in').hidden = !signedIn;
+    if (signedIn) $('account-name').textContent = cloudUser.email || cloudUser.name || 'your Google account';
+    $('data-description').textContent = signedIn
+      ? 'Your progress is saved on this device and in your account. You can still export a backup file.'
+      : 'Everything is stored only in this browser. Export a backup to keep it safe or move it to another device.';
+  }
+
+  /** Called after every user change that was saved on this device. */
+  function cloudChanged() {
+    if (!cloudUser) return;
+    saveMeta(sync.markDirty(syncMeta, new Date()));
+    schedulePush();
+  }
+
+  function schedulePush() {
+    if (!cloudUser || syncBlocked) return;
+    clearTimeout(pushTimer);
+    setSyncStatus('pending', 'Saving to your account…');
+    // Short delay so ticking several habits in a row is one write.
+    pushTimer = setTimeout(pushNow, 400);
+  }
+
+  function pushNow() {
+    if (!cloudUser || syncBlocked) return;
+    var uid = cloudUser.uid;
+    var revision = Math.max(syncMeta.revision, knownRemoteRevision) + 1;
+    var body = sync.toRemoteDoc(state, revision, new Date());
+    cloud.write(body).then(function () {
+      if (!cloudUser || cloudUser.uid !== uid) return;
+      knownRemoteRevision = Math.max(knownRemoteRevision, revision);
+      var unchanged = JSON.stringify(state) === JSON.stringify(body.state);
+      if (unchanged) {
+        saveMeta(sync.markSynced(syncMeta, uid, revision));
+        setSyncStatus('synced', 'Saved to your account');
+      } else {
+        var m = sync.normalizeMeta(syncMeta);
+        m.uid = uid;
+        m.revision = revision;
+        saveMeta(m);
+      }
+    }, function (e) {
+      setSyncStatus('error', 'Not saved to your account yet: ' + e.message + ' Your progress is safe on this device.');
+    });
+  }
+
+  function onCloudUser(user) {
+    var wasSignedIn = !!cloudUser;
+    cloudUser = user;
+    syncBlocked = false;
+    knownRemoteRevision = 0;
+    renderAccount();
+    if (user) {
+      showAccountError('');
+      setSyncStatus('pending', 'Checking your account…');
+      if (!wasSignedIn) announce('Signed in as ' + (user.email || user.name) + '.');
+    } else {
+      clearTimeout(pushTimer);
+      stopWaitingForAccount();
+    }
+  }
+
+  function onCloudRemote(data) {
+    if (!cloudUser) return;
+    var uid = cloudUser.uid;
+    var remote = sync.fromRemoteDoc(data);
+    if (remote.exists && remote.ok) knownRemoteRevision = Math.max(knownRemoteRevision, remote.revision);
+    var d = sync.decide({ local: state, meta: syncMeta, remote: remote, uid: uid });
+    if (readOnly) {
+      d = { action: 'blocked', message: 'Saving is disabled on this device (see the message at the top).' };
+    }
+
+    if (d.action === 'blocked') {
+      syncBlocked = true;
+      setSyncStatus('error', d.message + ' Your progress is safe on this device and nothing in your account was changed.');
+    } else if (d.action === 'upload') {
+      if (d.reason === 'first-sign-in') announce('Uploading your progress to your account.');
+      if (syncMeta.uid !== uid) saveMeta(sync.markDirty(sync.markSynced(syncMeta, uid, remote.exists ? remote.revision : 0), new Date()));
+      schedulePush();
+    } else if (d.action === 'download') {
+      adoptRemote(remote.state, d, uid);
+    } else {
+      saveMeta(sync.markSynced(syncMeta, uid, d.revision));
+      setSyncStatus('synced', remote.exists ? 'Saved to your account' : 'Signed in. Your progress will be saved to your account.');
+    }
+    stopWaitingForAccount();
+  }
+
+  function adoptRemote(remoteState, decision, uid) {
+    var replaced = state;
+    if (decision.backupLocal) {
+      try {
+        storage.setItem(sync.backupKey(new Date()), JSON.stringify(replaced));
+      } catch (e) {
+        // The download button below still offers the copy for this session.
+      }
+    }
+    try {
+      store.save(storage, remoteState);
+    } catch (e) {
+      setSyncStatus('error', 'Could not save your account’s progress on this device: ' + e.message);
+      return;
+    }
+    state = remoteState;
+    saveMeta(sync.markSynced(syncMeta, uid, decision.revision));
+    setSyncStatus('synced', 'Saved to your account');
+    render();
+    evaluate();
+    if (decision.backupLocal) {
+      showNotice('Loaded the progress saved in your account. This device had different progress, which was kept as a backup.', {
+        label: 'Download this device’s copy',
+        run: function () { downloadBackup(replaced, 'day-by-day-this-device-' + today + '.json'); }
+      });
+    } else {
+      announce('Loaded the latest progress from your account.');
+    }
+  }
+
+  function onCloudError(message) {
+    setSyncStatus('error', message);
+    stopWaitingForAccount();
+  }
+
+  function onSignIn() {
+    var btn = $('sign-in');
+    btn.disabled = true;
+    showAccountError('');
+    cloud.signIn().then(function (r) {
+      btn.disabled = false;
+      if (r.cancelled) announce('Sign-in cancelled.');
+      else if (!r.ok) showAccountError('Could not sign in: ' + r.message);
+    }, function (e) {
+      btn.disabled = false;
+      showAccountError('Could not sign in: ' + (e && e.message ? e.message : 'unknown error'));
+    });
+  }
+
+  function onSignOut() {
+    confirmDialog({
+      title: 'Sign out?',
+      message: [
+        'Your progress stays on this device, but changes will no longer be saved to your account.',
+        'Sign in again at any time to catch up.'
+      ],
+      confirmLabel: 'Sign out'
+    }).then(function (confirmed) {
+      if (!confirmed) return;
+      cloud.signOut().then(function () {
+        announce('Signed out. Your progress is still on this device.');
+        $('sign-in').focus();
+      });
+    });
+  }
+
+  function startCloud() {
+    if (!cloud || !cloud.isConfigured()) return;
+    $('account-view').hidden = false;
+    $('footer-text').textContent = 'Day by Day works offline. Signing in is optional. No ads, no tracking.';
+    renderAccount();
+    $('sign-in').addEventListener('click', onSignIn);
+    $('sign-out').addEventListener('click', onSignOut);
+    if (syncMeta.uid) {
+      // Previously signed in: wait briefly for the account's latest copy
+      // before checking for missed days, so a device that is behind doesn't
+      // announce a restart that another device's progress has already avoided.
+      waitingForAccount = true;
+      setTimeout(stopWaitingForAccount, 6000);
+    }
+    cloud.start({ onUser: onCloudUser, onRemote: onCloudRemote, onError: onCloudError }).catch(function () {
+      showAccountError('Sign-in could not be loaded. Check your connection; the app still works on this device.');
+      stopWaitingForAccount();
+    });
+  }
+
   /* ---------------- Start-up ---------------- */
 
   function init() {
@@ -575,6 +832,9 @@
       hideNotice();
       $('main').focus();
     });
+    $('notice-action').addEventListener('click', function () {
+      if (noticeAction) noticeAction.run();
+    });
 
     document.addEventListener('visibilitychange', function () {
       if (!document.hidden) checkForNewDay();
@@ -582,6 +842,7 @@
     window.addEventListener('focus', checkForNewDay);
     setInterval(checkForNewDay, 30 * 1000);
 
+    startCloud();
     evaluate();
     render();
   }

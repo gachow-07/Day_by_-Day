@@ -4,10 +4,11 @@ A lightweight, mobile-friendly habit challenge tracker inspired by 75 Hard.
 
 Create a challenge with a list of daily habits. **Every habit must be completed every calendar day.** If you miss a full day, or report a failure yourself, the current attempt restarts at Day 1. Previous attempts and your best streak stay visible.
 
-- Plain HTML, CSS and JavaScript. No framework, no build step, no runtime dependencies.
-- Works offline. Data is stored only in your browser's `localStorage`.
+- Plain HTML, CSS and JavaScript. No framework, no build step, no npm dependencies.
+- Works offline. Data is always saved in your browser's `localStorage` first.
+- Optional **Sign in with Google** saves your progress to your account and syncs it across devices (Firebase; see [Sign-in and sync](#sign-in-and-sync)). Sign-in stays hidden until it is configured.
 - Light and dark themes. **Auto** follows your device setting; **Light** or **Dark** overrides it. The choice is saved per device and is not part of exported data.
-- No accounts, analytics, payments or cloud sync.
+- No analytics, ads or payments.
 
 ## Running the app
 
@@ -64,11 +65,43 @@ The tests in `tests/` cover:
 - malformed saved data (bad JSON, wrong types, impossible dates, broken invariants, blocked storage)
 - migrating older saved data, and export/import validation
 - theme preference handling (fallback to Auto, blocked storage)
+- sync decisions: first-sign-in upload, fresh-device download, live changes, conflicts, stale devices, unreadable account data
 - every CSS/JS link in `index.html` carrying the same cache-busting version
+
+## Sign-in and sync
+
+Sign-in is optional and **off until configured**. With no config, the Account card is hidden and the app never contacts Google.
+
+### Turning it on
+
+1. In the [Firebase console](https://console.firebase.google.com), create a project. Google Analytics can stay off.
+2. Go to **Authentication → Sign-in method** and enable **Google**.
+3. In **Authentication → Settings → Authorized domains**, add your site's domain, for example `gachow-07.github.io`.
+4. Go to **Firestore Database → Create database** and choose production mode.
+5. On the **Rules** tab, replace everything with the contents of [`firestore.rules`](firestore.rules), then click **Publish**.
+6. Open **Project settings → General → Your apps → Web app** and copy the `firebaseConfig` object into [`js/firebase-config.js`](js/firebase-config.js).
+7. Bump the `?v=` tag in `index.html` (see above), commit and push.
+
+The config values identify your project and are safe to publish. Data access is controlled by the rules: each signed-in person can read and write only their own document, `users/{uid}`, and writes must have the expected shape.
+
+### How sync works
+
+- This device's copy is the working copy. Changes are saved locally first, then written to your account shortly afterwards. Offline, the app keeps working and catches up later.
+- **First sign-in:** progress already on this device is uploaded to your account. If the account already has different progress (for example from another phone), the account's copy is kept. This device's copy is saved as a backup, and a **Download this device's copy** button appears.
+- **Other devices:** changes from another signed-in device appear automatically. If both devices changed while out of touch, the newer change wins, and the replaced copy is backed up the same way.
+- **Missed days:** restarts the app makes on its own are never uploaded. Every device works them out from the same data, so a device that hasn't been opened for a while can't wipe out newer progress from another device. When you were signed in last time, the app also waits briefly for your account's latest copy before checking for missed days.
+- **Signing out** keeps your progress on the device and stops syncing.
+- Your theme choice stays per device and isn't synced.
+
+Sync code: `js/sync.js` makes every decision (unit tested in `tests/sync.test.js`), `js/cloud.js` talks to Firebase, and `js/app.js` connects the two.
+
+### Testing against the Firebase emulators (optional)
+
+The automated `npm test` suite needs nothing installed. To try sign-in end to end without a real project, run the [Firebase emulators](https://firebase.google.com/docs/emulator-suite) (`firebase emulators:start --only auth,firestore` with `firestore.rules`). Then add `emulators: { auth: '127.0.0.1:9099', firestore: '127.0.0.1:8080' }` to a local, uncommitted copy of the config. In emulator mode only, `DayByDayCloud._emulatorSignIn(email)` signs in without the Google popup.
 
 ## Backing up your data
 
-Everything lives in this browser only. Clearing site data, or switching browser or device, will lose it unless you have a backup.
+If you are not signed in, everything lives in this browser only. Clearing site data, or switching browser or device, will lose it unless you have a backup. Signed in, your account holds a copy too, but a backup file is still a good idea.
 
 - **Export data** downloads `day-by-day-backup-YYYY-MM-DD.json`. The file holds the challenge, the current attempt, every previous attempt, the best streak and a `schemaVersion`.
 - **Import data** loads a backup file. The file is fully checked **before anything is saved**:
@@ -105,6 +138,10 @@ index.html          Markup for every view and the confirmation dialog
 icon.svg            Favicon
 css/styles.css      All styles; light and dark colour tokens at the top
 js/theme.js         Auto/Light/Dark preference, applied before first paint
+js/sync.js          Pure sync decisions: upload / download / conflicts
+js/cloud.js         Firebase adapter: Google sign-in, users/{uid} document
+js/firebase-config.js  Firebase web config (null = sign-in hidden)
+firestore.rules     Firestore security rules to paste into the console
 js/core.js          Pure logic: dates, streaks, completion, restarts,
                     validation, migrations, import/export (no DOM, no storage)
 js/storage.js       localStorage load/save, migration on load, corrupt-data backup
@@ -114,4 +151,4 @@ tests/              node:test suites and helpers (a fake localStorage)
 package.json        npm scripts only; there are no dependencies
 ```
 
-`core.js`, `storage.js` and `theme.js` are plain scripts. In the browser they attach `DayByDayCore`, `DayByDayStorage` and `DayByDayTheme` to `window`, and in Node they export via `module.exports`. That is why the app works from `file://` without a bundler, and why the tests can `require()` the same files.
+`core.js`, `storage.js`, `sync.js` and `theme.js` are plain scripts. In the browser they attach `DayByDayCore`, `DayByDayStorage`, `DayByDaySync` and `DayByDayTheme` to `window`, and in Node they export via `module.exports`. That is why the app works from `file://` without a bundler, and why the tests can `require()` the same files.
