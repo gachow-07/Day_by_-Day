@@ -788,7 +788,6 @@
     var ph = H - pad.t - pad.b;
     var n = series.length;
     var band = pw / n;
-    var asBars = n <= 31;
 
     var tracked = series.filter(function (p) { return p.percentage !== null; });
     var avg = tracked.length ? Math.round(tracked.reduce(function (a, p) { return a + p.percentage; }, 0) / tracked.length) : 0;
@@ -814,47 +813,40 @@
     var marks = svg('g', {});
     root.appendChild(marks);
 
-    if (asBars) {
-      var bw = Math.max(2, Math.min(24, band - 2));
-      series.forEach(function (p, i) {
-        if (p.percentage === null) return;
-        var x = xOf(i) - bw / 2;
-        var base = pad.t + ph;
-        if (p.percentage === 0) {
-          marks.appendChild(svg('rect', { x: x, y: base - 2, width: bw, height: 2, class: 'chart-zero', 'data-i': i }));
-          return;
-        }
-        var top = yOf(p.percentage);
-        var r = Math.min(4, bw / 2, base - top);
-        var d = 'M' + x + ',' + base + 'V' + (top + r) + 'Q' + x + ',' + top + ' ' + (x + r) + ',' + top +
-          'H' + (x + bw - r) + 'Q' + (x + bw) + ',' + top + ' ' + (x + bw) + ',' + (top + r) + 'V' + base + 'Z';
-        marks.appendChild(svg('path', { d: d, class: 'chart-bar', 'data-i': i }));
-      });
-    } else {
-      var line = '';
-      var area = '';
-      var runStart = null;
-      series.forEach(function (p, i) {
-        if (p.percentage === null) {
-          if (runStart !== null) area += 'L' + xOf(i - 1) + ',' + (pad.t + ph) + 'Z';
-          runStart = null;
-          return;
-        }
-        var x = xOf(i);
-        var y = yOf(p.percentage);
-        if (runStart === null) {
-          line += 'M' + x + ',' + y;
-          area += 'M' + x + ',' + (pad.t + ph) + 'L' + x + ',' + y;
-          runStart = i;
-        } else {
-          line += 'L' + x + ',' + y;
-          area += 'L' + x + ',' + y;
-        }
-      });
-      if (runStart !== null) area += 'L' + xOf(n - 1) + ',' + (pad.t + ph) + 'Z';
-      marks.appendChild(svg('path', { d: area, class: 'chart-area' }));
-      marks.appendChild(svg('path', { d: line, class: 'chart-line' }));
-    }
+    // Line with a light area wash; untracked days break the line.
+    var line = '';
+    var area = '';
+    var runStart = null;
+    var base = pad.t + ph;
+    series.forEach(function (p, i) {
+      if (p.percentage === null) {
+        if (runStart !== null) area += 'L' + xOf(i - 1) + ',' + base + 'Z';
+        runStart = null;
+        return;
+      }
+      var x = xOf(i);
+      var y = yOf(p.percentage);
+      if (runStart === null) {
+        line += 'M' + x + ',' + y;
+        area += 'M' + x + ',' + base + 'L' + x + ',' + y;
+        runStart = i;
+      } else {
+        line += 'L' + x + ',' + y;
+        area += 'L' + x + ',' + y;
+      }
+    });
+    if (runStart !== null) area += 'L' + xOf(n - 1) + ',' + base + 'Z';
+    marks.appendChild(svg('path', { d: area, class: 'chart-area' }));
+    marks.appendChild(svg('path', { d: line, class: 'chart-line' }));
+
+    // A dot per day for short ranges; on longer ranges only for days with no
+    // tracked neighbour, which would otherwise have no visible line.
+    series.forEach(function (p, i) {
+      if (p.percentage === null) return;
+      var alone = (i === 0 || series[i - 1].percentage === null) && (i === n - 1 || series[i + 1].percentage === null);
+      if (n > 14 && !alone) return;
+      marks.appendChild(svg('circle', { cx: xOf(i), cy: yOf(p.percentage), r: alone ? 5 : 4, class: 'chart-point', 'data-i': i }));
+    });
 
     // X labels: first, middle and last day (every day for a week).
     var labelIdx = n <= 7 ? series.map(function (_, i) { return i; }) : [0, Math.floor((n - 1) / 2), n - 1];
@@ -878,17 +870,15 @@
       Array.prototype.forEach.call(marks.querySelectorAll('.is-hover'), function (m) { m.classList.remove('is-hover'); });
       var mark = marks.querySelector('[data-i="' + i + '"]');
       if (mark) mark.classList.add('is-hover');
-      if (!asBars) {
-        cross.setAttribute('x1', xOf(i));
-        cross.setAttribute('x2', xOf(i));
-        cross.setAttribute('visibility', 'visible');
-        if (p.percentage !== null) {
-          dot.setAttribute('cx', xOf(i));
-          dot.setAttribute('cy', yOf(p.percentage));
-          dot.setAttribute('visibility', 'visible');
-        } else {
-          dot.setAttribute('visibility', 'hidden');
-        }
+      cross.setAttribute('x1', xOf(i));
+      cross.setAttribute('x2', xOf(i));
+      cross.setAttribute('visibility', 'visible');
+      if (p.percentage !== null) {
+        dot.setAttribute('cx', xOf(i));
+        dot.setAttribute('cy', yOf(p.percentage));
+        dot.setAttribute('visibility', 'visible');
+      } else {
+        dot.setAttribute('visibility', 'hidden');
       }
       showTooltip(wrap, xOf(i), p.percentage === null ? pad.t + ph / 2 : yOf(p.percentage), W,
         p.percentage === null ? '—' : p.percentage + '%',
