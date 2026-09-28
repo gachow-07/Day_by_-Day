@@ -492,7 +492,7 @@ input[aria-invalid="true"] {
   .goal-check:checked + .goal-box,
   .cal-cell.is-locked,
   .swatch.is-locked,
-  .chart-bar,
+  .chart-point,
   .hbar-fill {
     background: Highlight;
     fill: Highlight;
@@ -1214,10 +1214,7 @@ button.cal-cell {
 
 .chart-grid { stroke: var(--grid); stroke-width: 1; }
 .chart-axis { fill: var(--muted); font-size: 11px; font-family: inherit; }
-.chart-bar { fill: var(--accent); }
-.chart-bar.is-hover { fill: var(--accent-hover); }
-.chart-zero { fill: var(--muted); opacity: 0.6; }
-.chart-zero.is-hover { opacity: 1; }
+.chart-point { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
 .chart-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .chart-area { fill: var(--accent); opacity: 0.12; }
 .chart-cross { stroke: var(--muted); stroke-width: 1; }
