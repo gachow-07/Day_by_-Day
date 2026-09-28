@@ -625,6 +625,7 @@ input[aria-invalid="true"] {
 /* ---------- Notice ---------- */
 .notice {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   align-items: flex-start;
   justify-content: space-between;
@@ -641,6 +642,55 @@ input[aria-invalid="true"] {
 
 .notice p {
   margin: 0;
+  flex: 1 1 14rem;
+}
+
+.notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.notice-actions .btn {
+  max-width: 100%;
+}
+
+/* ---------- Account ---------- */
+.account-who {
+  margin-bottom: 4px;
+  overflow-wrap: anywhere;
+}
+
+.sync-status {
+  color: var(--muted);
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sync-status::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: 0 0 10px;
+  background: var(--control-border);
+}
+
+.sync-status[data-state="synced"]::before {
+  background: var(--accent);
+}
+
+.sync-status[data-state="error"] {
+  color: var(--danger);
+}
+
+.sync-status[data-state="error"]::before {
+  background: var(--danger);
 }
 
 /* ---------- Dialog ---------- */

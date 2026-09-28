@@ -1,0 +1,30 @@
+rules_version = '2';
+
+// Day by Day — Firestore security rules.
+// Paste into Firebase console → Firestore Database → Rules, then Publish.
+//
+// Each signed-in person can read and write only their own document,
+// users/{their uid}. Everything else is denied.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      function isOwner() {
+        return request.auth != null && request.auth.uid == userId;
+      }
+
+      function isValidDoc() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(['schemaVersion', 'state', 'revision', 'clientUpdatedAt', 'updatedAt'])
+          && d.keys().hasAll(['schemaVersion', 'state', 'revision', 'clientUpdatedAt', 'updatedAt'])
+          && d.schemaVersion is int
+          && d.revision is int && d.revision >= 0
+          && d.state is map
+          && d.clientUpdatedAt is string && d.clientUpdatedAt.size() < 40
+          && d.updatedAt == request.time;
+      }
+
+      allow read, delete: if isOwner();
+      allow create, update: if isOwner() && isValidDoc();
+    }
+  }
+}
