@@ -1341,6 +1341,190 @@ main:focus,
   opacity: 0.6;
 }
 
+/* Workout split: today's workout and the ⋯ menu */
+.goal-list > li,
+.flex-list > li {
+  position: relative;
+}
+
+.goal.has-more {
+  padding-right: calc(var(--s-4) + 36px);
+}
+
+.goal-workout {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--chip, var(--accent)) 14%, transparent);
+  color: var(--text);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.goal-workout .icon {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  color: var(--chip, var(--accent));
+}
+
+.goal.is-done .goal-workout {
+  color: var(--text-2);
+}
+
+.goal-more {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.goal-more:hover,
+.goal-more[aria-expanded="true"] {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.goal-more:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.menu {
+  position: absolute;
+  z-index: 150;
+  width: min(300px, calc(100vw - 16px));
+  padding: var(--s-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-lg);
+}
+
+.menu-title {
+  margin: var(--s-1) var(--s-2) 0;
+  font-weight: var(--weight-semibold);
+}
+
+.menu-sub {
+  margin: 2px var(--s-2) var(--s-2);
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  min-height: 44px;
+  padding: var(--s-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-item .icon {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: var(--text-2);
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: var(--surface-3);
+  outline: none;
+}
+
+.menu-item:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--focus);
+}
+
+.menu-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.menu-label {
+  font-weight: var(--weight-medium);
+  overflow-wrap: anywhere;
+}
+
+.menu-hint {
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+
+.menu-sep {
+  height: 1px;
+  margin: var(--s-1) var(--s-2);
+  background: var(--border);
+}
+
+.toast {
+  position: fixed;
+  z-index: 160;
+  left: 50%;
+  bottom: calc(80px + var(--safe-bottom));
+  transform: translateX(-50%);
+  max-width: calc(100vw - 32px);
+  padding: var(--s-2) var(--s-4);
+  border-radius: var(--radius-pill);
+  background: var(--text);
+  color: var(--bg);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  box-shadow: var(--shadow-lg);
+  animation: toast-in 200ms var(--ease-out);
+}
+
+@media (min-width: 768px) {
+  .toast { bottom: var(--s-6); }
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+}
+
+.split-fields {
+  display: grid;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+
+.split-fields .inline-field {
+  padding-left: 0;
+  margin-left: 0;
+}
+
+.textarea {
+  font-family: inherit;
+  min-height: 104px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
 .goal.just-done .goal-box {
   animation: tick 320ms var(--ease-spring);
 }

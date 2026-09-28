@@ -450,7 +450,7 @@
       lockedIn: s.lockedIn,
       focus: state.focus && state.focus[date] ? state.focus[date] : '',
       items: rec ? rec.habits.map(function (h) {
-        return { id: h.id, name: h.name, done: rec.done.indexOf(h.id) >= 0, flexible: !!h.flex };
+        return { id: h.id, name: h.name, done: rec.done.indexOf(h.id) >= 0, flexible: !!h.flex, workout: h.workout || null };
       }) : []
     };
   }
