@@ -23,6 +23,12 @@ You need only a modern browser. Pick either option:
 
 To use it on a phone, host the folder on any static web host (GitHub Pages, Netlify, etc.). There is nothing to build.
 
+### Publishing updates (cache busting)
+
+GitHub Pages lets browsers keep CSS and JavaScript for about 10 minutes. Without a fix, visitors could briefly get new HTML with old styles. Every stylesheet and script link in `index.html` therefore ends in the same version tag, such as `css/styles.css?v=3`.
+
+**Whenever you change a file in `css/` or `js/`, bump that number in every link** (for example, `v=3` to `v=4`). `npm test` fails if the links don't all share one version.
+
 ## How it works
 
 | Situation | What happens |
@@ -58,6 +64,7 @@ The tests in `tests/` cover:
 - malformed saved data (bad JSON, wrong types, impossible dates, broken invariants, blocked storage)
 - migrating older saved data, and export/import validation
 - theme preference handling (fallback to Auto, blocked storage)
+- every CSS/JS link in `index.html` carrying the same cache-busting version
 
 ## Backing up your data
 
