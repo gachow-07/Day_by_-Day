@@ -1260,7 +1260,7 @@
     var has = sum.totalTrackedDays > 0;
     renderDailyChart();
     renderWeekdayChart();
-    renderHabitChart();
+    renderGoalHistory();
     $('analytics').hidden = !has && !state.habits.length;
   }
 
@@ -1314,41 +1314,127 @@
     return plural(n, unit);
   }
 
-  function renderHabitChart() {
-    var list = $('chart-habits');
-    list.textContent = '';
-    var rows = stats.habitStats(state, today, weekStart())
-      .filter(function (s) { return s.periods > 0; })
-      .sort(function (a, b) { return b.completionRate - a.completionRate || b.periods - a.periods; });
-    if (!rows.length) {
-      var li = el('li', 'empty');
-      li.appendChild(icon('target', 22));
-      li.appendChild(el('p', '', 'Each goal’s consistency appears after its first full day (or week, for times-per-week goals).'));
-      list.appendChild(li);
-      return;
-    }
-    rows.forEach(function (s) {
-      var item = el('li', 'hbar');
-      if (s.color) item.dataset.color = s.color;
-      var head = el('div', 'hbar-head');
-      var chip = goalChip(s, true);
-      if (chip) head.appendChild(chip);
-      head.appendChild(el('span', 'hbar-name', s.name));
-      if (statusTag(s)) head.appendChild(el('span', 'tag', statusTag(s)));
-      head.appendChild(el('span', 'hbar-value', s.completionRate + '%'));
-      item.appendChild(head);
-      var track = el('div', 'hbar-track');
-      var fill = el('div', 'hbar-fill');
-      fill.style.width = s.completionRate + '%';
-      track.appendChild(fill);
-      track.setAttribute('aria-hidden', 'true');
-      item.appendChild(track);
-      var detail = s.unit === 'week'
-        ? ': target met in ' + s.completionRate + '% of ' + unitText(s.periods, 'week') + '.'
-        : ': done on ' + s.completed + ' of ' + unitText(s.periods, 'day') + ' it was due.';
-      item.appendChild(el('span', 'visually-hidden', detail));
-      list.appendChild(item);
+  /* Goal history: one card per goal with a contribution grid (a dropdown) */
+
+  var GH_KEY = 'day-by-day.goal-history-open';
+  var GH_STATE_TEXT = { done: 'done', missed: 'missed', open: 'not done (weekly goal)', pending: 'not done yet', none: 'not due', future: '' };
+
+  function goalHistoryWeeks() {
+    var list = $('goal-history-list');
+    var width = list.clientWidth || 320;
+    // Card padding (2 × 16) and 16px per week column (12px cell + 4px gap):
+    // as many weeks as fit, up to a year.
+    return Math.max(8, Math.min(53, Math.floor((width - 32 + 4) / 16)));
+  }
+
+  function renderGoalHistory() {
+    var card = $('goal-history-card');
+    var goals = state.habits.filter(function (h) {
+      return h.status === 'active' || core.habitHistoryDates(state, h.id, today).length || (state.days[today] && state.days[today].habits.some(function (e) { return e.id === h.id; }));
     });
+    card.hidden = !goals.length;
+    if (!goals.length) return;
+
+    var rec = state.days[today];
+    var dueToday = rec ? rec.habits.filter(function (e) { return !e.flex; }) : [];
+    var doneToday = dueToday.filter(function (e) { return rec.done.indexOf(e.id) >= 0; }).length;
+    $('goal-history-summary').textContent = plural(goals.length, 'goal') +
+      (dueToday.length ? ' · ' + doneToday + ' of ' + dueToday.length + ' done today' : '');
+
+    var open = readPref(GH_KEY, false);
+    $('goal-history-toggle').setAttribute('aria-expanded', String(open));
+    $('goal-history-body').hidden = !open;
+    if (!open) return;
+
+    var weeks = goalHistoryWeeks();
+    $('gh-caption').textContent = 'The last ' + weeks + ' weeks, newest on the right. Each square is a day; each column is a week starting on ' + (weekStart() === 1 ? 'Monday' : 'Sunday') + '.';
+    var statsById = {};
+    stats.habitStats(state, today, weekStart()).forEach(function (st) { statsById[st.id] = st; });
+    var list = $('goal-history-list');
+    list.textContent = '';
+    goals.forEach(function (h) {
+      var st = statsById[h.id];
+      var grid = stats.habitGrid(state, h.id, today, weeks, weekStart());
+      var li = el('li', 'gh-card');
+      li.dataset.color = h.color || 'jade';
+
+      // Header: icon, name, streak line, today's status
+      var head = el('div', 'gh-head');
+      var chip = el('span', 'goal-chip');
+      chip.dataset.color = h.color || 'jade';
+      chip.setAttribute('aria-hidden', 'true');
+      chip.appendChild(icon(h.icon || 'target', 18));
+      head.appendChild(chip);
+      var text = el('div', 'gh-text');
+      var name = el('h3', 'gh-name', h.name);
+      text.appendChild(name);
+      var meta = el('p', 'gh-meta');
+      var unit = st ? st.unit : 'day';
+      var streak = st && h.status === 'active' ? st.currentStreak : 0;
+      var flame = iconSpan('flame', 14, 'gh-flame');
+      flame.setAttribute('aria-hidden', 'true');
+      meta.appendChild(flame);
+      meta.appendChild(document.createTextNode(
+        (h.status === 'active' ? streak + '-' + unit + ' streak' : statusTag(st || h)) +
+        (st && st.periods ? ' · ' + st.completionRate + '% ' + (unit === 'week' ? 'of weeks met' : 'done') : '')));
+      text.appendChild(meta);
+      head.appendChild(text);
+
+      var todayEntry = rec && rec.habits.filter(function (e) { return e.id === h.id; })[0];
+      if (todayEntry) {
+        var isDone = rec.done.indexOf(h.id) >= 0;
+        var badge = el('span', 'gh-status' + (isDone ? ' is-done' : ''));
+        badge.appendChild(icon(isDone ? 'check' : 'circle-check', 18));
+        badge.setAttribute('role', 'img');
+        badge.setAttribute('aria-label', isDone ? 'Done today' : 'Not done yet today');
+        badge.dataset.tip = isDone ? 'Done today' : 'Not done yet today';
+        if (!isDone) badge.firstChild.style.opacity = '0';
+        head.appendChild(badge);
+      }
+      li.appendChild(head);
+
+      // Weekly goals: this week's progress bar
+      if (st && st.unit === 'week' && st.thisWeek) {
+        var wk = el('div', 'gh-week');
+        var bar = el('div', 'progress progress-sm');
+        bar.setAttribute('role', 'progressbar');
+        bar.setAttribute('aria-label', h.name + ' this week');
+        bar.setAttribute('aria-valuemin', '0');
+        bar.setAttribute('aria-valuemax', String(st.thisWeek.target));
+        bar.setAttribute('aria-valuenow', String(Math.min(st.thisWeek.count, st.thisWeek.target)));
+        var fill = el('div', 'progress-bar');
+        fill.style.width = Math.min(100, (st.thisWeek.count / st.thisWeek.target) * 100) + '%';
+        bar.appendChild(fill);
+        wk.appendChild(bar);
+        wk.appendChild(el('span', 'gh-week-text', st.thisWeek.count + ' / ' + st.thisWeek.target + ' this week'));
+        li.appendChild(wk);
+      }
+
+      // Contribution grid (weeks as columns, days as rows)
+      var g = el('div', 'gh-grid');
+      g.style.gridTemplateColumns = 'repeat(' + weeks + ', minmax(0, 1fr))';
+      g.setAttribute('role', 'img');
+      var summary = unit === 'week'
+        ? h.name + ': done on ' + plural(grid.doneAll, 'day') + ' in the last ' + weeks + ' weeks.'
+        : h.name + ': done on ' + grid.done + ' of ' + plural(grid.due, 'day') + ' it was due in the last ' + weeks + ' weeks.';
+      g.setAttribute('aria-label', summary);
+      grid.weeks.forEach(function (col) {
+        col.forEach(function (cell) {
+          var sq = el('span', 'gh-cell is-' + cell.state);
+          if (cell.state !== 'future') sq.title = formatDate(cell.date, 'full') + ': ' + GH_STATE_TEXT[cell.state];
+          g.appendChild(sq);
+        });
+      });
+      li.appendChild(g);
+      list.appendChild(li);
+    });
+  }
+
+  function onGoalHistoryToggle() {
+    var open = $('goal-history-toggle').getAttribute('aria-expanded') !== 'true';
+    writePref(GH_KEY, open);
+    renderGoalHistory();
+    announce(open ? 'Goal history expanded.' : 'Goal history collapsed.');
   }
 
   function renderGoalStreaks() {
@@ -2164,6 +2250,7 @@
     $('cal-next').addEventListener('click', function () { moveMonth(1); });
     $('range-control').addEventListener('change', onRangeChange);
     $('share-week').addEventListener('click', onShareWeek);
+    $('goal-history-toggle').addEventListener('click', onGoalHistoryToggle);
     $('early-action').addEventListener('click', function () { selectTab('today', true); });
     $('day-dialog-close').addEventListener('click', function () { closeDialog('day-dialog'); });
     $('day-dialog').addEventListener('close', function () { restoreFocus('day-dialog', $('cal-grid')); });
@@ -2201,7 +2288,11 @@
     var resizeTimer = null;
     window.addEventListener('resize', function () {
       clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(function () { if (activeTab === 'stats') renderDailyChart(); }, 150);
+      resizeTimer = setTimeout(function () {
+        if (activeTab !== 'stats') return;
+        renderDailyChart();
+        renderGoalHistory();
+      }, 150);
     });
 
     startCloud();
