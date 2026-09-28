@@ -1,0 +1,17 @@
+{
+  "name": "Day by Day",
+  "short_name": "Day by Day",
+  "description": "A tiny daily check-in that becomes a clear weekly plan for becoming more consistent.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0e1113",
+  "theme_color": "#0e1113",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Check in today", "short_name": "Check in", "url": "./#today", "icons": [{ "src": "icon.svg", "sizes": "any" }] },
+    { "name": "Stats", "url": "./#stats" }
+  ]
+}

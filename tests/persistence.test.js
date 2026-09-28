@@ -130,8 +130,8 @@ test('challenge data (v2) becomes ongoing habits with day-by-day history', () =>
   assert.equal(r.fromVersion, 2);
   const s = r.state;
   assert.deepEqual(s.habits, [
-    { id: 'h1', name: 'Workout', createdOn: '2026-09-01', status: 'active', archivedOn: null },
-    { id: 'h2', name: 'Read', createdOn: '2026-09-01', status: 'active', archivedOn: null }
+    { id: 'h1', name: 'Workout', createdOn: '2026-09-01', status: 'active', archivedOn: null, icon: null, color: null, schedule: { type: 'daily' }, reminder: null },
+    { id: 'h2', name: 'Read', createdOn: '2026-09-01', status: 'active', archivedOn: null, icon: null, color: null, schedule: { type: 'daily' }, reminder: null }
   ]);
   // Attempt 1: Sep 1–3 done, Sep 4 missed; attempt 2 began Sep 5: Sep 5–6 done; Sep 7 half-done.
   assert.deepEqual(Object.keys(s.days).sort(), ['2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04', '2026-09-05', '2026-09-06', '2026-09-07']);
@@ -267,4 +267,87 @@ test('a failed import leaves existing stored data untouched', () => {
     assert.throws(() => store.save(storage, r.state || {}));
   }
   assert.equal(storage.getItem(KEY), before);
+});
+
+/* ---------------- schema 3 -> 4 ---------------- */
+
+/** A schema-3 document, as the previous version of the app saved it. */
+function v3Doc() {
+  return {
+    schemaVersion: 3,
+    habits: [
+      { id: 'h1', name: 'Workout', createdOn: '2026-09-01', status: 'active', archivedOn: null },
+      { id: 'h2', name: 'Read', createdOn: '2026-09-01', status: 'archived', archivedOn: '2026-09-04' }
+    ],
+    days: {
+      '2026-09-01': { habits: [{ id: 'h1', name: 'Workout' }, { id: 'h2', name: 'Read' }], done: ['h1', 'h2'] },
+      '2026-09-02': { habits: [{ id: 'h1', name: 'Workout' }, { id: 'h2', name: 'Read' }], done: ['h1', 'h2'] },
+      '2026-09-03': { habits: [{ id: 'h1', name: 'Workout' }, { id: 'h2', name: 'Read' }], done: ['h1'] },
+      '2026-09-04': { habits: [{ id: 'h1', name: 'Workout' }], done: ['h1'] }
+    }
+  };
+}
+
+test('schema 3 data upgrades to 4 without changing any record or statistic', () => {
+  const old = v3Doc();
+  const r = core.migrate(old);
+  assert.equal(r.ok, true, r.message);
+  assert.equal(r.fromVersion, 3);
+  assert.equal(r.state.schemaVersion, 4);
+  assert.deepEqual(r.state.days, old.days, 'daily records are untouched');
+  assert.deepEqual(r.state.habits.map((h) => [h.id, h.name, h.status, h.archivedOn]), [['h1', 'Workout', 'active', null], ['h2', 'Read', 'archived', '2026-09-04']]);
+  assert.ok(r.state.habits.every((h) => h.schedule.type === 'daily' && h.icon === null && h.color === null && h.reminder === null));
+  assert.deepEqual(r.state.focus, {});
+  assert.deepEqual(r.state.settings, { weekStart: 0 });
+  const sum = stats.summary(r.state, '2026-09-04');
+  assert.deepEqual([sum.currentStreak, sum.bestStreak, sum.totalLockedInDays, sum.completionRate], [1, 2, 3, Math.round(6 / 7 * 100)]);
+});
+
+test('load upgrades schema 3 localStorage data and keeps a backup', () => {
+  const raw = JSON.stringify(v3Doc());
+  const storage = new FakeStorage({ [KEY]: raw });
+  const r = store.load(storage, NOW);
+  assert.equal(r.notice, null);
+  assert.equal(JSON.parse(storage.getItem(KEY)).schemaVersion, 4);
+  const backup = storage.keys().find((k) => k.startsWith(store.BACKUP_PREFIX + 'v3.'));
+  assert.equal(storage.getItem(backup), raw);
+});
+
+test('schema 3 backups can still be imported', () => {
+  const r = core.parseImport(JSON.stringify(Object.assign({ app: 'day-by-day' }, v3Doc())));
+  assert.equal(r.ok, true, r.message);
+  assert.equal(r.state.schemaVersion, 4);
+});
+
+const BAD_V4 = {
+  'an unknown colour': (s) => { s.habits[0].color = 'plaid'; },
+  'a bad icon name': (s) => { s.habits[0].icon = '<script>'; },
+  'a bad schedule': (s) => { s.habits[0].schedule = { type: 'days', days: [] }; },
+  'a bad reminder': (s) => { s.habits[0].reminder = '25:99'; },
+  'a bad flex flag': (s) => { s.days[START].habits[0].flex = 'yes'; },
+  'a flex goal without a target': (s) => { s.days[START].habits[0].flex = true; },
+  'an over-long focus': (s) => { s.focus[START] = 'x'.repeat(141); },
+  'a bad week start': (s) => { s.settings.weekStart = 3; }
+};
+
+for (const [label, mutate] of Object.entries(BAD_V4)) {
+  test('validation rejects ' + label, () => {
+    const s = withHabits(START);
+    assert.deepEqual(core.validateState(s), []);
+    mutate(s);
+    assert.ok(core.validateState(s).length > 0);
+  });
+}
+
+test('export and import round-trip goal details, focus and settings', () => {
+  let s = withHabits(START, ['Run']);
+  s = core.updateHabit(s, 'h1', { icon: 'footprints', color: 'sky', schedule: { type: 'days', days: [1, 3, 5] }, reminder: '07:30' }, START).state;
+  s = core.setFocus(s, 'Deep work before noon', START).state;
+  s = core.setWeekStart(s, 1).state;
+  const doc = core.buildExport(s, NOW, stats.summary(s, START));
+  assert.equal(doc.focus[START], 'Deep work before noon');
+  assert.equal(doc.settings.weekStart, 1);
+  const r = core.parseImport(JSON.stringify(doc));
+  assert.equal(r.ok, true, r.message);
+  assert.deepEqual(r.state, s);
 });

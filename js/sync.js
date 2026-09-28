@@ -32,7 +32,7 @@
   /* ---------------- Metadata ---------------- */
 
   function emptyMeta() {
-    return { uid: null, revision: 0, dirty: false, changedAt: '' };
+    return { uid: null, revision: 0, dirty: false, changedAt: '', syncedAt: '' };
   }
 
   function normalizeMeta(raw) {
@@ -41,7 +41,8 @@
       uid: typeof raw.uid === 'string' && raw.uid ? raw.uid : null,
       revision: Number.isInteger(raw.revision) && raw.revision >= 0 ? raw.revision : 0,
       dirty: raw.dirty === true,
-      changedAt: typeof raw.changedAt === 'string' ? raw.changedAt : ''
+      changedAt: typeof raw.changedAt === 'string' ? raw.changedAt : '',
+      syncedAt: typeof raw.syncedAt === 'string' ? raw.syncedAt : ''
     };
   }
 
@@ -182,11 +183,12 @@
   }
 
   /** Metadata once this device and account `uid` are in step at `revision`. */
-  function markSynced(meta, uid, revision) {
+  function markSynced(meta, uid, revision, now) {
     var m = normalizeMeta(meta);
     m.uid = uid;
     m.revision = revision;
     m.dirty = false;
+    m.syncedAt = (now || new Date()).toISOString();
     return m;
   }
 

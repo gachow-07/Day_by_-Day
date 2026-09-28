@@ -26,7 +26,9 @@ test('sync metadata defaults safely and survives damaged storage', () => {
   const storage = new FakeStorage();
   const meta = sync.markDirty(sync.markSynced(sync.emptyMeta(), UID, 4), new Date('2026-09-10T00:00:00Z'));
   sync.writeMeta(storage, meta);
-  assert.deepEqual(sync.readMeta(storage), { uid: UID, revision: 4, dirty: true, changedAt: '2026-09-10T00:00:00.000Z' });
+  const read = sync.readMeta(storage);
+  assert.deepEqual([read.uid, read.revision, read.dirty, read.changedAt], [UID, 4, true, '2026-09-10T00:00:00.000Z']);
+  assert.match(read.syncedAt, /^\d{4}-\d\d-\d\dT/, 'last successful sync time is recorded');
 });
 
 /* ---------------- account documents ---------------- */
