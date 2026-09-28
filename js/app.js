@@ -1,33 +1,41 @@
 /*
  * Day by Day — UI controller.
  *
- * Wires the DOM to the pure functions in core.js (habits and daily records),
- * stats.js (every number shown) and storage.js / sync.js / cloud.js
- * (persistence). This file only renders state and handles events.
+ * Wires the DOM to the pure functions in core.js (goals and daily records),
+ * stats.js (every number and insight shown), plans.js (feature
+ * entitlements) and storage.js / sync.js / cloud.js (persistence). This
+ * file only renders state and handles events.
  */
 (function () {
   'use strict';
 
   var core = window.DayByDayCore;
   var stats = window.DayByDayStats;
+  var plans = window.DayByDayPlans;
+  var icons = window.DayByDayIcons;
   var store = window.DayByDayStorage;
   var sync = window.DayByDaySync;
   var cloud = window.DayByDayCloud;
 
   var SVG_NS = 'http://www.w3.org/2000/svg';
   var RANGES = { '7': 7, '30': 30, '90': 90, all: 'all' };
+  var TABS = ['today', 'stats', 'settings'];
+  var NOTIFY_KEY = 'day-by-day.notify';
+  var REMINDED_KEY = 'day-by-day.reminded';
+  var WIDE = window.matchMedia ? window.matchMedia('(min-width: 1024px)') : { matches: false };
+  var SIDEBAR = window.matchMedia ? window.matchMedia('(min-width: 768px)') : { matches: false };
 
   var storage = safeLocalStorage();
   var state = core.emptyState();
   var readOnly = false;
   var today = core.toDateKey(new Date());
   var activeTab = 'today';
-  var statsStale = true;
   var chartRange = '30';
   var calMonth = null; // { y, m }
   var selectedDate = null;
   var renderedGoalSignature = null;
   var wasLockedIn = null;
+  var editingId = null; // goal open in the goal form (null = new goal)
 
   function $(id) {
     return document.getElementById(id);
@@ -46,15 +54,49 @@
     return node;
   }
 
+  function icon(name, size) {
+    var s = icons.create(name, size);
+    return s || document.createTextNode('');
+  }
+
+  /** A span holding an icon, for placing in flex layouts. */
+  function iconSpan(name, size, className) {
+    var span = el('span', className || '');
+    span.appendChild(icon(name, size));
+    return span;
+  }
+
   function safeLocalStorage() {
     try {
       return window.localStorage;
     } catch (e) {
       return {
         getItem: function () { throw e; },
-        setItem: function () { throw e; }
+        setItem: function () { throw e; },
+        removeItem: function () {}
       };
     }
+  }
+
+  function readPref(key, fallback) {
+    try {
+      var v = storage.getItem(key);
+      return v === null ? fallback : JSON.parse(v);
+    } catch (e) {
+      return fallback;
+    }
+  }
+
+  function writePref(key, value) {
+    try {
+      storage.setItem(key, JSON.stringify(value));
+    } catch (e) {
+      // Preferences are conveniences; ignore blocked storage.
+    }
+  }
+
+  function weekStart() {
+    return state.settings ? state.settings.weekStart : 0;
   }
 
   /* ---------------- Formatting ---------------- */
@@ -69,7 +111,9 @@
     day: { month: 'long', day: 'numeric' },
     short: { month: 'short', day: 'numeric' },
     full: { month: 'short', day: 'numeric', year: 'numeric' },
-    weekday: { weekday: 'narrow' }
+    weekday: { weekday: 'narrow' },
+    dowShort: { weekday: 'short' },
+    dowLong: { weekday: 'long' }
   };
 
   function formatDate(key, style) {
@@ -135,7 +179,6 @@
       return false;
     }
     state = next;
-    statsStale = true;
     render();
     if (!(opts && opts.auto)) cloudChanged();
     return true;
@@ -147,8 +190,7 @@
       today = now;
       calMonth = null;
       refreshDays();
-      statsStale = true;
-      render();
+        render();
     }
   }
 
@@ -221,9 +263,46 @@
   }
 
 
-  /* ---------------- Tabs ---------------- */
 
-  var TABS = ['today', 'stats', 'settings'];
+  /* ---------------- Tooltips for icon-only controls ---------------- */
+
+  var tipTarget = null;
+
+  function showTip(target) {
+    var text = target.getAttribute('data-tip') || target.getAttribute('aria-label');
+    if (!text) return;
+    var tip = $('tooltip');
+    tip.textContent = text;
+    tip.hidden = false;
+    var r = target.getBoundingClientRect();
+    var tw = tip.offsetWidth;
+    var th = tip.offsetHeight;
+    var left = Math.max(8, Math.min(window.innerWidth - tw - 8, r.left + r.width / 2 - tw / 2));
+    var top = r.top - th - 8;
+    if (top < 8) top = r.bottom + 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    tipTarget = target;
+  }
+
+  function hideTip() {
+    $('tooltip').hidden = true;
+    tipTarget = null;
+  }
+
+  function initTooltips() {
+    function find(e) {
+      return e.target && e.target.closest ? e.target.closest('[data-tip]') : null;
+    }
+    document.addEventListener('pointerover', function (e) { var t = find(e); if (t && e.pointerType !== 'touch') showTip(t); });
+    document.addEventListener('pointerout', function (e) { var t = find(e); if (t && t === tipTarget) hideTip(); });
+    document.addEventListener('focusin', function (e) { var t = find(e); if (t && e.target.matches(':focus-visible')) showTip(t); });
+    document.addEventListener('focusout', function (e) { var t = find(e); if (t) hideTip(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && tipTarget) hideTip(); });
+    window.addEventListener('scroll', hideTip, { passive: true });
+  }
+
+  /* ---------------- Tabs / navigation ---------------- */
 
   function selectTab(name, focus) {
     activeTab = TABS.indexOf(name) >= 0 ? name : 'today';
@@ -240,118 +319,207 @@
     } catch (e) {
       // file:// pages may refuse; the tab still works.
     }
+    document.title = (activeTab === 'today' ? 'Today' : activeTab === 'stats' ? 'Stats' : 'Settings') + ' · Day by Day';
     if (activeTab === 'stats') renderStats();
+    if (activeTab === 'settings') renderSettings();
     window.scrollTo(0, 0);
   }
 
   function onTabKey(event) {
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Home' && event.key !== 'End') return;
+    var vertical = SIDEBAR.matches;
+    var prev = vertical ? 'ArrowUp' : 'ArrowLeft';
+    var next = vertical ? 'ArrowDown' : 'ArrowRight';
+    if ([prev, next, 'Home', 'End'].indexOf(event.key) < 0) return;
     event.preventDefault();
     var i = TABS.indexOf(activeTab);
-    var next = TABS[(i + (event.key === 'ArrowLeft' ? TABS.length - 1 : 1)) % TABS.length];
-    if (event.key === 'Home') next = TABS[0];
-    if (event.key === 'End') next = TABS[TABS.length - 1];
-    selectTab(next, true);
+    var target = TABS[(i + (event.key === prev ? TABS.length - 1 : 1)) % TABS.length];
+    if (event.key === 'Home') target = TABS[0];
+    if (event.key === 'End') target = TABS[TABS.length - 1];
+    selectTab(target, true);
   }
 
+  function syncNavOrientation() {
+    $('tablist').setAttribute('aria-orientation', SIDEBAR.matches ? 'vertical' : 'horizontal');
+  }
+
+
   /* ---------------- Today ---------------- */
+
+  var RING_C = 2 * Math.PI * 52;
+
+  function formatTime(hhmm) {
+    var p = hhmm.split(':').map(Number);
+    return new Date(2000, 0, 1, p[0], p[1]).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  }
+
+  function dayShort(dow) {
+    // 2026-09-06 is a Sunday.
+    return formatDate(core.addDays('2026-09-06', dow), 'dowShort');
+  }
+
+  function scheduleText(sch) {
+    if (!sch || sch.type === 'daily') return 'Every day';
+    if (sch.type === 'weekdays') return 'Weekdays';
+    if (sch.type === 'weekly') return plural(sch.times, 'time') + ' a week';
+    var order = weekStart() === 1 ? [1, 2, 3, 4, 5, 6, 0] : [0, 1, 2, 3, 4, 5, 6];
+    return order.filter(function (d) { return sch.days.indexOf(d) >= 0; }).map(dayShort).join(', ');
+  }
 
   /** Today's record, or (while waiting for the account) a preview of it. */
   function todayRecord() {
     if (state.days[today]) return state.days[today];
-    var active = core.activeHabits(state);
-    return active.length ? { habits: active.map(function (h) { return { id: h.id, name: h.name }; }), done: [], preview: true } : null;
+    var preview = [];
+    core.activeHabits(state).forEach(function (h) {
+      var how = core.scheduleOn(h, today);
+      if (how) preview.push(how === 'flex' ? { id: h.id, name: h.name, flex: true, target: h.schedule.times } : { id: h.id, name: h.name });
+    });
+    return preview.length ? { habits: preview, done: [], preview: true } : null;
   }
 
-  function buildGoalList(rec) {
-    var list = $('goal-list');
-    list.textContent = '';
-    rec.habits.forEach(function (h) {
-      var li = el('li');
-      var label = el('label', 'goal');
-      var box = el('input', 'goal-check');
-      box.type = 'checkbox';
-      box.id = 'goal-' + h.id;
-      box.dataset.habitId = h.id;
-      label.appendChild(box);
-      label.appendChild(el('span', 'goal-box'));
-      label.lastChild.setAttribute('aria-hidden', 'true');
-      label.appendChild(el('span', 'goal-name', h.name));
-      li.appendChild(label);
-      list.appendChild(li);
-    });
+  function goalChip(habit, small) {
+    if (!habit || (!habit.icon && !habit.color)) return null;
+    var chip = el('span', 'goal-chip' + (small ? ' sm' : ''));
+    chip.setAttribute('aria-hidden', 'true');
+    if (habit.color) chip.dataset.color = habit.color;
+    chip.appendChild(icon(habit.icon || 'target', small ? 14 : 18));
+    return chip;
+  }
+
+  function buildGoalRow(entry) {
+    var habit = core.findHabit(state, entry.id);
+    var li = el('li');
+    var label = el('label', 'goal');
+    if (habit && habit.color) label.dataset.color = habit.color;
+    var box = el('input', 'goal-check');
+    box.type = 'checkbox';
+    box.id = 'goal-' + entry.id;
+    box.dataset.habitId = entry.id;
+    label.appendChild(box);
+    var mark = el('span', 'goal-box');
+    mark.setAttribute('aria-hidden', 'true');
+    mark.appendChild(icon('check', 16));
+    label.appendChild(mark);
+    var chip = goalChip(habit);
+    if (chip) label.appendChild(chip);
+    var text = el('span', 'goal-text');
+    text.appendChild(el('span', 'goal-name', entry.name));
+    var meta = el('span', 'goal-meta');
+    meta.dataset.metaFor = entry.id;
+    text.appendChild(meta);
+    label.appendChild(text);
+    li.appendChild(label);
+    return li;
+  }
+
+  function goalMeta(entry, done) {
+    var habit = core.findHabit(state, entry.id);
+    if (entry.flex) {
+      var count = stats.weeklyProgress(state, today, weekStart(), entry.id);
+      var met = count >= entry.target;
+      return count + ' of ' + entry.target + ' this week' + (met ? ' · target met' : '');
+    }
+    if (habit && habit.reminder && !done) return 'Reminder at ' + formatTime(habit.reminder);
+    return '';
   }
 
   function renderToday() {
     var sum = stats.summary(state, today);
     var hasHabits = state.habits.length > 0;
+    $('today-date').textContent = formatDate(today, 'long');
     $('onboarding').hidden = hasHabits;
-    $('streak-hero').hidden = !hasHabits;
+    $('hero').hidden = !hasHabits;
     $('goals-card').hidden = !hasHabits;
+    $('focus-card').hidden = !hasHabits || !plans.can('reflections');
     if (!hasHabits) {
       renderedGoalSignature = null;
       wasLockedIn = null;
       return;
     }
 
+    // Streak
     $('streak-count').textContent = String(sum.currentStreak);
-    $('streak-unit').textContent = sum.currentStreak === 1 ? 'Day' : 'Days';
+    $('streak-unit').textContent = sum.currentStreak === 1 ? 'day' : 'days';
     $('best-streak').textContent = plural(sum.bestStreak, 'day');
-    $('streak-hero').setAttribute('aria-label', 'Locked In streak: ' + plural(sum.currentStreak, 'day') + '. Best: ' + plural(sum.bestStreak, 'day') + '.');
-    $('today-date').textContent = formatDate(today, 'long');
 
     var rec = todayRecord();
-    var card = $('goals-card');
-    $('goals-empty').hidden = !!rec;
-    $('goals-body').hidden = !rec;
-    if (!rec) {
-      renderedGoalSignature = null;
-      card.classList.remove('is-locked');
-      $('goals-status').textContent = 'No goals today';
-      $('goals-hint').textContent = '';
-      wasLockedIn = null;
-      return;
-    }
+    var required = rec ? rec.habits.filter(function (h) { return !h.flex; }) : [];
+    var flexible = rec ? rec.habits.filter(function (h) { return h.flex; }) : [];
+    var s = core.recordSummary(rec);
 
-    var signature = JSON.stringify(rec.habits);
+    // Goal lists (rebuilt only when the goals change, so focus is kept)
+    var signature = JSON.stringify(rec ? rec.habits : []) + JSON.stringify(state.habits.map(function (h) { return [h.icon, h.color]; }));
     if (signature !== renderedGoalSignature) {
-      buildGoalList(rec);
+      var list = $('goal-list');
+      var flexList = $('flex-list');
+      list.textContent = '';
+      flexList.textContent = '';
+      required.forEach(function (e) { list.appendChild(buildGoalRow(e)); });
+      flexible.forEach(function (e) { flexList.appendChild(buildGoalRow(e)); });
       renderedGoalSignature = signature;
     }
-    Array.prototype.forEach.call(document.querySelectorAll('#goal-list .goal-check'), function (box) {
-      var done = rec.done.indexOf(box.dataset.habitId) >= 0;
-      box.checked = done;
-      box.parentNode.classList.toggle('is-done', done);
+    $('goal-list').hidden = !required.length;
+    $('flex-section').hidden = !flexible.length;
+    var done = rec ? rec.done : [];
+    Array.prototype.forEach.call(document.querySelectorAll('#goals-card .goal-check'), function (box) {
+      var id = box.dataset.habitId;
+      var isDone = done.indexOf(id) >= 0;
+      box.checked = isDone;
+      box.parentNode.classList.toggle('is-done', isDone);
+      var entry = rec.habits.filter(function (h) { return h.id === id; })[0];
+      var meta = document.querySelector('[data-meta-for="' + id + '"]');
+      meta.textContent = entry ? goalMeta(entry, isDone) : '';
+      meta.hidden = !meta.textContent;
     });
 
-    var s = core.recordSummary(rec);
-    var bar = $('goals-progress');
+    // Empty state for days with nothing due
+    var nothingDue = !required.length;
+    $('goals-empty').hidden = !nothingDue;
+    if (nothingDue) {
+      $('goals-empty-text').textContent = !core.activeHabits(state).length
+        ? 'All your goals are paused, so nothing is due today. Days with nothing due don’t count toward or against your streak.'
+        : flexible.length
+          ? 'No everyday goals are due today, so today won’t affect your locked-in streak. Your times-per-week goals are below.'
+          : 'Nothing is scheduled for today, so it won’t affect your locked-in streak.';
+    }
+
+    // Hero ring, progress and message
+    var hero = $('hero');
+    var ratio = s.total ? s.completed / s.total : 0;
+    $('ring-fill').style.strokeDashoffset = String(RING_C * (1 - ratio));
+    $('ring-fill').style.opacity = ratio > 0 ? '1' : '0';
+    $('ring-count').textContent = s.total ? s.completed + '/' + s.total : '—';
+    hero.classList.toggle('is-locked', s.lockedIn);
+    var bar = $('today-progress');
+    bar.hidden = !s.total;
     bar.setAttribute('aria-valuemax', String(s.total));
     bar.setAttribute('aria-valuenow', String(s.completed));
-    bar.setAttribute('aria-valuetext', s.completed + ' of ' + s.total + ' goals completed');
-    $('goals-progress-bar').style.width = (s.total ? (s.completed / s.total) * 100 : 0) + '%';
-    $('goals-status').textContent = s.lockedIn ? 'LOCKED IN ✓' : s.completed + ' of ' + s.total + ' completed';
-    card.classList.toggle('is-locked', s.lockedIn);
-    $('goals-hint').textContent = s.lockedIn
-      ? 'Every goal done. See you tomorrow.'
-      : (s.total - s.completed) + ' to go to lock in today.';
+    bar.setAttribute('aria-valuetext', s.completed + ' of ' + s.total + ' goals done');
+    $('today-progress-bar').style.width = (ratio * 100) + '%';
+    $('hero-status').textContent = heroMessage(s, sum);
     if (wasLockedIn === false && s.lockedIn) celebrate();
     wasLockedIn = s.lockedIn;
+
+    // Focus
+    var focus = state.focus[today] || '';
+    var input = $('focus-input');
+    if (document.activeElement !== input) input.value = focus;
+  }
+
+  function heroMessage(s, sum) {
+    if (!s.total) return 'Nothing is due today.';
+    if (s.lockedIn) return 'Day locked in. ' + (sum.currentStreak > 1 ? sum.currentStreak + ' days in a row.' : 'Your streak has started.');
+    var left = s.total - s.completed;
+    if (left === 1) return 'One more goal to lock in today.';
+    if (s.completed === 0) return 'Check off all ' + s.total + ' goals to lock in today.';
+    return left + ' more goals to lock in today.';
   }
 
   function celebrate() {
-    var card = $('goals-card');
-    var hero = $('streak-hero');
-    card.classList.remove('celebrate');
+    var hero = $('hero');
     hero.classList.remove('celebrate');
-    // Restart the animation even if it ran recently.
-    void card.offsetWidth;
-    card.classList.add('celebrate');
+    void hero.offsetWidth;
     hero.classList.add('celebrate');
-    setTimeout(function () {
-      card.classList.remove('celebrate');
-      hero.classList.remove('celebrate');
-    }, 1200);
+    setTimeout(function () { hero.classList.remove('celebrate'); }, 1400);
   }
 
   function onGoalChange(event) {
@@ -380,11 +548,32 @@
       row.classList.add('just-done');
     }
     var s = core.recordSummary(state.days[today]);
-    var name = box.parentNode.textContent;
-    if (r.lockedIn) {
-      announce('Locked in! All ' + s.total + ' goals done. Streak: ' + plural(stats.currentStreak(state, today), 'day') + '.');
+    var name = box.parentNode.querySelector('.goal-name').textContent;
+    if (r.lockedIn && box.checked) {
+      announce('Day locked in. All ' + plural(s.total, 'goal') + ' done. Locked-in streak: ' + plural(stats.currentStreak(state, today), 'day') + '.');
     } else {
-      announce(name + (box.checked ? ' done. ' : ' not done. ') + s.completed + ' of ' + s.total + ' completed.');
+      announce(name + (box.checked ? ' done. ' : ' not done. ') + (s.total ? s.completed + ' of ' + s.total + ' goals done today.' : ''));
+    }
+  }
+
+  function onFocusSubmit(event) {
+    event.preventDefault();
+    saveFocus();
+  }
+
+  function saveFocus() {
+    var input = $('focus-input');
+    var current = state.focus[today] || '';
+    var value = input.value.replace(/\s+/g, ' ').trim();
+    if (value === current) return;
+    var r = core.setFocus(state, value, today);
+    if (!r.ok) {
+      $('focus-status').textContent = r.message;
+      return;
+    }
+    if (commit(r.state)) {
+      $('focus-status').textContent = value ? 'Saved for today.' : 'Cleared.';
+      setTimeout(function () { $('focus-status').textContent = ''; }, 2500);
     }
   }
 
@@ -406,30 +595,47 @@
     input.removeAttribute('aria-invalid');
     input.value = '';
     if (commit(r.state)) {
-      announce('Added ' + core.findHabit(state, r.id).name + '. Add more goals with Edit.');
-      $('edit-goals').focus();
+      announce('Added ' + core.findHabit(state, r.id).name + '. Add more goals any time.');
+      $('add-goal').focus();
     }
   }
 
-  /* ---------------- Edit goals ---------------- */
 
-  function openManage(focusAdd) {
-    var dialog = $('goals-dialog');
-    renderManage();
-    $('manage-error').hidden = true;
+  /* ---------------- Dialog helpers ---------------- */
+
+  var dialogOpeners = {};
+
+  function openDialog(id, focusEl) {
+    var dialog = $(id);
+    dialogOpeners[id] = document.activeElement;
     if (typeof dialog.showModal === 'function') {
       if (!dialog.open) dialog.showModal();
     } else {
       dialog.setAttribute('open', '');
     }
-    if (focusAdd || !state.habits.length) $('new-goal').focus();
-    else $('manage-done').focus();
+    if (focusEl) focusEl.focus();
   }
 
-  function closeManage() {
-    var dialog = $('goals-dialog');
+  function closeDialog(id) {
+    var dialog = $(id);
     if (typeof dialog.close === 'function' && dialog.open) dialog.close();
     else dialog.removeAttribute('open');
+  }
+
+  /** Return focus to whatever opened a dialog (once it closes). */
+  function restoreFocus(id, fallback) {
+    var opener = dialogOpeners[id];
+    dialogOpeners[id] = null;
+    if (opener && document.contains(opener) && !opener.closest('[hidden]') && typeof opener.focus === 'function') opener.focus();
+    else if (fallback) fallback.focus();
+  }
+
+  /* ---------------- Edit goals ---------------- */
+
+  function openManage() {
+    renderManage();
+    manageError('');
+    openDialog('goals-dialog', state.habits.length ? $('manage-done') : $('manage-add'));
   }
 
   function manageError(message) {
@@ -438,33 +644,44 @@
     box.hidden = !message;
   }
 
-  var ICONS = {
-    up: 'M12 19V5M6 11l6-6 6 6',
-    down: 'M12 5v14M6 13l6 6 6-6',
-    pause: 'M9 5v14M15 5v14',
-    remove: 'M6 6l12 12M18 6L6 18'
-  };
-
-  function iconButton(action, id, text, label, disabled) {
-    var b = el('button', 'icon-btn');
-    if (ICONS[action]) {
-      var icon = svg('svg', { viewBox: '0 0 24 24', width: '18', height: '18', 'aria-hidden': 'true', focusable: 'false' });
-      icon.appendChild(svg('path', { d: ICONS[action], fill: 'none', stroke: 'currentColor', 'stroke-width': '2.4', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
-      b.appendChild(icon);
-    } else {
-      b.textContent = text;
-    }
-    b.type = 'button';
-    b.dataset.action = action;
-    b.dataset.id = id;
-    b.setAttribute('aria-label', label);
-    b.title = label;
-    if (disabled) b.disabled = true;
-    return b;
+  function goalSub(h) {
+    var parts = [scheduleText(h.schedule)];
+    if (h.reminder) parts.push('Reminder at ' + formatTime(h.reminder));
+    if (h.status === 'paused') parts.unshift('Paused');
+    if (h.status === 'archived') parts = ['Archived ' + formatDate(h.archivedOn, 'short')];
+    return parts.join(' · ');
   }
 
-  function textButton(action, id, text, label, extra) {
-    var b = el('button', 'btn btn-small ' + (extra || 'btn-secondary'), text);
+  function manageRow(h, index, total) {
+    var li = el('li', 'manage-row');
+    li.dataset.id = h.id;
+    if (h.status === 'active') {
+      var handle = el('button', 'drag-handle');
+      handle.type = 'button';
+      handle.dataset.dragId = h.id;
+      handle.setAttribute('aria-label', 'Reorder ' + h.name + ', position ' + (index + 1) + ' of ' + total);
+      handle.setAttribute('aria-describedby', 'reorder-help');
+      handle.dataset.tip = 'Drag to reorder';
+      handle.appendChild(icon('grip-vertical', 18));
+      li.appendChild(handle);
+    }
+    var chip = goalChip(h, true);
+    if (chip) li.appendChild(chip);
+    var text = el('span', 'manage-text');
+    text.appendChild(el('span', 'manage-name', h.name));
+    text.appendChild(el('span', 'manage-sub', goalSub(h)));
+    li.appendChild(text);
+    if (h.status === 'archived') {
+      li.appendChild(actionButton('restore', h.id, 'Restore', 'Restore ' + h.name));
+    } else {
+      if (h.status === 'paused') li.appendChild(actionButton('resume', h.id, 'Resume', 'Resume ' + h.name));
+      li.appendChild(actionButton('edit', h.id, 'Edit', 'Edit ' + h.name));
+    }
+    return li;
+  }
+
+  function actionButton(action, id, text, label) {
+    var b = el('button', 'btn btn-secondary btn-sm', text);
     b.type = 'button';
     b.dataset.action = action;
     b.dataset.id = id;
@@ -475,146 +692,354 @@
   function renderManage() {
     var groups = { active: [], paused: [], archived: [] };
     state.habits.forEach(function (h) { groups[h.status].push(h); });
-
-    var active = $('manage-active');
-    active.textContent = '';
-    groups.active.forEach(function (h, i) {
-      var li = el('li', 'manage-row');
-      var input = el('input', 'manage-name');
-      input.type = 'text';
-      input.maxLength = 120;
-      input.value = h.name;
-      input.dataset.id = h.id;
-      input.setAttribute('aria-label', 'Name of goal ' + (i + 1));
-      input.autocomplete = 'off';
-      li.appendChild(input);
-      var tools = el('div', 'manage-tools');
-      tools.appendChild(iconButton('up', h.id, '↑', 'Move ' + h.name + ' up', i === 0));
-      tools.appendChild(iconButton('down', h.id, '↓', 'Move ' + h.name + ' down', i === groups.active.length - 1));
-      tools.appendChild(iconButton('pause', h.id, '⏸', 'Pause ' + h.name));
-      tools.appendChild(iconButton('remove', h.id, '✕', 'Remove ' + h.name));
-      li.appendChild(tools);
-      active.appendChild(li);
+    [['active', 'manage-active'], ['paused', 'manage-paused'], ['archived', 'manage-archived']].forEach(function (g) {
+      var list = $(g[1]);
+      list.textContent = '';
+      groups[g[0]].forEach(function (h, i) { list.appendChild(manageRow(h, i, groups[g[0]].length)); });
     });
+    var max = activeLimit();
+    $('manage-active-count').textContent = groups.active.length + (max ? ' of ' + max : '');
     $('manage-active-empty').hidden = groups.active.length > 0;
-
-    var paused = $('manage-paused');
-    paused.textContent = '';
-    groups.paused.forEach(function (h) {
-      var li = el('li', 'manage-row is-inactive');
-      li.appendChild(el('span', 'manage-label', h.name));
-      var tools = el('div', 'manage-tools');
-      tools.appendChild(textButton('resume', h.id, 'Resume', 'Resume ' + h.name));
-      tools.appendChild(iconButton('remove', h.id, '✕', 'Remove ' + h.name));
-      li.appendChild(tools);
-      paused.appendChild(li);
-    });
-    $('manage-paused-section').hidden = groups.paused.length === 0;
-
-    var archived = $('manage-archived');
-    archived.textContent = '';
-    groups.archived.forEach(function (h) {
-      var li = el('li', 'manage-row is-inactive');
-      var label = el('span', 'manage-label', h.name);
-      label.appendChild(el('span', 'manage-sub', ' · archived ' + formatDate(h.archivedOn, 'short')));
-      li.appendChild(label);
-      var tools = el('div', 'manage-tools');
-      tools.appendChild(textButton('restore', h.id, 'Restore', 'Restore ' + h.name));
-      li.appendChild(tools);
-      archived.appendChild(li);
-    });
-    $('manage-archived-section').hidden = groups.archived.length === 0;
+    $('reorder-help').hidden = groups.active.length < 2;
+    $('manage-paused-section').hidden = !groups.paused.length;
+    $('manage-archived-section').hidden = !groups.archived.length;
     $('manage-archived-count').textContent = String(groups.archived.length);
+    $('manage-add').disabled = groups.active.length >= max;
   }
 
-  /** Apply a habit change from the Edit sheet, then keep focus sensible. */
-  function applyManage(r, message, focusKey) {
-    if (!r.ok) {
-      manageError(r.message);
-      return false;
-    }
-    manageError('');
-    if (!commit(r.state)) return false;
-    renderManage();
-    if (message) announce(message);
-    var target = focusKey && document.querySelector('#goals-dialog [data-action="' + focusKey[0] + '"][data-id="' + focusKey[1] + '"]:not(:disabled)');
-    if (target) target.focus();
-    else if (!document.activeElement || !$('goals-dialog').contains(document.activeElement) || document.activeElement === document.body) $('new-goal').focus();
-    return true;
-  }
-
-  function onAddGoal(event) {
-    event.preventDefault();
-    checkForNewDay();
-    var input = $('new-goal');
-    var r = core.addHabit(state, input.value, today);
-    if (applyManage(r, r.ok ? 'Added ' + core.cleanName(input.value) + '.' : '')) {
-      input.value = '';
-      input.focus();
-    }
-  }
-
-  function onRename(event) {
-    var input = event.target;
-    if (!input.classList.contains('manage-name')) return;
-    var h = core.findHabit(state, input.dataset.id);
-    if (!h || core.cleanName(input.value) === h.name) {
-      if (h) input.value = h.name;
-      return;
-    }
-    var r = core.renameHabit(state, h.id, input.value, today);
-    if (!r.ok) {
-      manageError(r.message);
-      input.value = h.name;
-      return;
-    }
-    manageError('');
-    if (commit(r.state)) announce('Renamed to ' + core.findHabit(state, h.id).name + '. Past days keep the old name.');
+  /** Active-goal limit: the plan's, or the app's technical maximum. */
+  function activeLimit() {
+    var planLimit = plans.limit('activeGoals');
+    return planLimit === null ? core.MAX_ACTIVE_HABITS : Math.min(planLimit, core.MAX_ACTIVE_HABITS);
   }
 
   function onManageClick(event) {
     var btn = event.target.closest('button[data-action]');
     if (!btn || btn.disabled) return;
     checkForNewDay();
-    var id = btn.dataset.id;
-    var h = core.findHabit(state, id);
+    var h = core.findHabit(state, btn.dataset.id);
     if (!h) return;
     var action = btn.dataset.action;
-    if (action === 'up' || action === 'down') {
-      var dir = action === 'up' ? -1 : 1;
-      applyManage(core.moveHabit(state, id, dir, today), 'Moved ' + h.name + ' ' + action + '.', [action, id]);
-    } else if (action === 'pause') {
-      applyManage(core.setHabitStatus(state, id, 'paused', today), h.name + ' paused. It no longer counts from today.', ['resume', id]);
-    } else if (action === 'resume') {
-      applyManage(core.setHabitStatus(state, id, 'active', today), h.name + ' is active again from today.', ['pause', id]);
-    } else if (action === 'restore') {
-      applyManage(core.setHabitStatus(state, id, 'active', today), h.name + ' restored. It counts again from today.', ['pause', id]);
-    } else if (action === 'remove') {
-      removeGoal(h);
+    if (action === 'edit') {
+      openGoalForm(h.id);
+    } else if (action === 'resume' || action === 'restore') {
+      var r = core.setHabitStatus(state, h.id, 'active', today);
+      if (!r.ok) { manageError(r.message); return; }
+      if (commit(r.state)) {
+        renderManage();
+        announce(h.name + (action === 'resume' ? ' resumed' : ' restored') + '. It counts again from today.');
+        var again = document.querySelector('#manage-active [data-action="edit"][data-id="' + h.id + '"]');
+        if (again) again.focus();
+      }
     }
   }
 
-  function removeGoal(h) {
+  /* Reorder: keyboard (arrow keys on the handle) and pointer drag. */
+
+  function moveTo(id, index, viaKeyboard) {
+    var r = core.reorderHabit(state, id, index, today);
+    if (!r.ok) { manageError(r.message); return; }
+    if (r.unchanged) return;
+    if (!commit(r.state)) return;
+    renderManage();
+    var active = core.activeHabits(state);
+    var pos = active.map(function (h) { return h.id; }).indexOf(id);
+    announce('Moved ' + active[pos].name + ' to position ' + (pos + 1) + ' of ' + active.length + '.');
+    if (viaKeyboard) {
+      var handle = document.querySelector('#manage-active [data-drag-id="' + id + '"]');
+      if (handle) handle.focus();
+    }
+  }
+
+  function onHandleKey(event) {
+    var handle = event.target.closest('[data-drag-id]');
+    if (!handle) return;
+    var id = handle.dataset.dragId;
+    var ids = core.activeHabits(state).map(function (h) { return h.id; });
+    var i = ids.indexOf(id);
+    var to = null;
+    if (event.key === 'ArrowUp') to = i - 1;
+    if (event.key === 'ArrowDown') to = i + 1;
+    if (event.key === 'Home') to = 0;
+    if (event.key === 'End') to = ids.length - 1;
+    if (to === null) return;
+    event.preventDefault();
+    if (to < 0 || to >= ids.length) {
+      announce('Already at the ' + (to < 0 ? 'top' : 'bottom') + '.');
+      return;
+    }
+    moveTo(id, to, true);
+  }
+
+  var drag = null;
+
+  function onHandleDown(event) {
+    var handle = event.target.closest('[data-drag-id]');
+    if (!handle || event.button > 0) return;
+    event.preventDefault();
+    var row = handle.closest('.manage-row');
+    var rows = Array.prototype.slice.call($('manage-active').children);
+    drag = {
+      id: handle.dataset.dragId,
+      row: row,
+      rows: rows,
+      from: rows.indexOf(row),
+      to: rows.indexOf(row),
+      startY: event.clientY,
+      mids: rows.map(function (r) { var b = r.getBoundingClientRect(); return b.top + b.height / 2; }),
+      step: row.getBoundingClientRect().height + 8
+    };
+    handle.setPointerCapture(event.pointerId);
+    row.classList.add('is-dragging');
+  }
+
+  function onHandleMove(event) {
+    if (!drag) return;
+    var dy = event.clientY - drag.startY;
+    drag.row.style.transform = 'translateY(' + dy + 'px)';
+    var y = drag.mids[drag.from] + dy;
+    var to;
+    if (y > drag.mids[drag.from]) {
+      to = drag.from;
+      drag.mids.forEach(function (m, i) { if (i > drag.from && y > m) to = i; });
+    } else {
+      to = drag.from;
+      for (var k = drag.from - 1; k >= 0; k--) if (y < drag.mids[k]) to = k;
+    }
+    drag.to = to;
+    drag.rows.forEach(function (r, i) {
+      if (r === drag.row) return;
+      var shift = 0;
+      if (drag.from < to && i > drag.from && i <= to) shift = -drag.step;
+      if (drag.from > to && i < drag.from && i >= to) shift = drag.step;
+      r.style.transform = shift ? 'translateY(' + shift + 'px)' : '';
+    });
+  }
+
+  function onHandleUp() {
+    if (!drag) return;
+    var d = drag;
+    drag = null;
+    d.rows.forEach(function (r) { r.style.transform = ''; });
+    d.row.classList.remove('is-dragging');
+    if (d.to !== d.from) moveTo(d.id, d.to, false);
+  }
+
+  /* ---------------- Goal form ---------------- */
+
+  function titleCase(name) {
+    return name.replace(/-/g, ' ').replace(/^\w/, function (c) { return c.toUpperCase(); });
+  }
+
+  var COLOR_NAMES = { jade: 'Jade', teal: 'Teal', sky: 'Sky', indigo: 'Indigo', violet: 'Violet', rose: 'Rose', amber: 'Amber', slate: 'Slate' };
+
+  function choice(name, value, content, label, checked) {
+    var l = el('label', 'choice');
+    l.dataset.tip = label;
+    var input = el('input');
+    input.type = 'radio';
+    input.name = name;
+    input.value = value;
+    input.checked = !!checked;
+    input.setAttribute('aria-label', label);
+    l.appendChild(input);
+    var face = el('span', 'choice-face');
+    face.setAttribute('aria-hidden', 'true');
+    face.appendChild(content);
+    l.appendChild(face);
+    return l;
+  }
+
+  function buildGoalFormChoices(h) {
+    var iconsBox = $('gf-icons');
+    iconsBox.textContent = '';
+    iconsBox.appendChild(choice('gf-icon', '', document.createTextNode('None'), 'No icon', !h || !h.icon));
+    icons.GOAL_ICONS.forEach(function (name) {
+      iconsBox.appendChild(choice('gf-icon', name, icon(name, 20), titleCase(name) + ' icon', h && h.icon === name));
+    });
+    var colors = $('gf-colors');
+    colors.textContent = '';
+    colors.appendChild(choice('gf-color', '', document.createTextNode('None'), 'No colour', !h || !h.color));
+    core.GOAL_COLORS.forEach(function (c) {
+      var dot = el('span', 'color-dot');
+      dot.dataset.color = c;
+      colors.appendChild(choice('gf-color', c, dot, COLOR_NAMES[c], h && h.color === c));
+    });
+    var days = $('gf-days');
+    days.textContent = '';
+    var order = weekStart() === 1 ? [1, 2, 3, 4, 5, 6, 0] : [0, 1, 2, 3, 4, 5, 6];
+    var chosen = h && h.schedule.type === 'days' ? h.schedule.days : [1, 3, 5];
+    order.forEach(function (d) {
+      var l = el('label', 'choice');
+      var input = el('input');
+      input.type = 'checkbox';
+      input.value = String(d);
+      input.checked = chosen.indexOf(d) >= 0;
+      input.setAttribute('aria-label', formatDate(core.addDays('2026-09-06', d), 'dowLong'));
+      l.appendChild(input);
+      var face = el('span', 'choice-face', dayShort(d));
+      face.setAttribute('aria-hidden', 'true');
+      l.appendChild(face);
+      days.appendChild(l);
+    });
+  }
+
+  function syncScheduleFields() {
+    var type = document.querySelector('input[name="gf-schedule"]:checked').value;
+    $('gf-days').hidden = type !== 'days';
+    $('gf-times-wrap').hidden = type !== 'weekly';
+    $('gf-remind-wrap').hidden = !$('gf-remind').checked;
+  }
+
+  function reminderHint() {
+    if (!plans.can('reminders')) return 'Reminders are part of Pro.';
+    var on = readPref(NOTIFY_KEY, true);
+    if (!on) return 'Reminders are turned off in Settings → Notifications.';
+    if (!('Notification' in window)) return 'Reminders appear inside Day by Day while it’s open.';
+    if (Notification.permission !== 'granted') return 'Reminders appear inside Day by Day while it’s open. Allow notifications in Settings to also get a system notification.';
+    return 'You’ll get a notification at this time if the goal isn’t done yet and Day by Day is open.';
+  }
+
+  function openGoalForm(id) {
+    var h = id ? core.findHabit(state, id) : null;
+    if (!h && core.activeHabits(state).length >= activeLimit()) {
+      manageError('You can have up to ' + activeLimit() + ' active goals. Pause or archive one to add another.');
+      announce('Goal limit reached.');
+      return;
+    }
+    editingId = h ? h.id : null;
+    $('goal-form-title').textContent = h ? 'Edit goal' : 'New goal';
+    $('gf-save').textContent = h ? 'Save changes' : 'Add goal';
+    $('gf-name').value = h ? h.name : '';
+    $('gf-name').removeAttribute('aria-invalid');
+    $('gf-name-error').hidden = true;
+    $('gf-schedule-error').hidden = true;
+    $('gf-error').hidden = true;
+    buildGoalFormChoices(h);
+    var sch = h ? h.schedule : { type: 'daily' };
+    document.querySelector('input[name="gf-schedule"][value="' + sch.type + '"]').checked = true;
+    $('gf-times').value = String(sch.type === 'weekly' ? sch.times : 3);
+    var flexOk = plans.can('flexibleSchedules');
+    Array.prototype.forEach.call(document.querySelectorAll('input[name="gf-schedule"]'), function (r) {
+      r.disabled = !flexOk && r.value !== 'daily';
+    });
+    $('gf-remind').checked = !!(h && h.reminder);
+    $('gf-remind').disabled = !plans.can('reminders');
+    $('gf-time').value = h && h.reminder ? h.reminder : '09:00';
+    $('gf-remind-hint').textContent = reminderHint();
+    syncScheduleFields();
+
+    var status = $('gf-status');
+    status.hidden = !h || h.status === 'archived';
+    if (h && h.status !== 'archived') {
+      var history = core.habitHistoryDates(state, h.id, today).length;
+      $('gf-pause').textContent = h.status === 'paused' ? 'Resume goal' : 'Pause goal';
+      $('gf-pause').dataset.icon = '';
+      $('gf-remove').textContent = history ? 'Archive goal' : 'Delete goal';
+      $('gf-status-hint').textContent = (h.status === 'paused'
+        ? 'Paused goals aren’t due and don’t affect your streak. '
+        : 'Pause a goal for a break; it won’t be due until you resume it. ') +
+        (history
+          ? 'Archiving removes it from your list but keeps its ' + plural(history, 'day') + ' of history in Stats.'
+          : 'It has no history yet, so deleting removes it completely.');
+    }
+    openDialog('goal-form-dialog', $('gf-name'));
+  }
+
+  function readGoalForm() {
+    var type = document.querySelector('input[name="gf-schedule"]:checked').value;
+    var schedule = { type: type };
+    if (type === 'days') {
+      schedule.days = Array.prototype.filter.call($('gf-days').querySelectorAll('input'), function (i) { return i.checked; })
+        .map(function (i) { return Number(i.value); });
+    }
+    if (type === 'weekly') schedule.times = Number($('gf-times').value);
+    var iconInput = document.querySelector('input[name="gf-icon"]:checked');
+    var colorInput = document.querySelector('input[name="gf-color"]:checked');
+    return {
+      name: $('gf-name').value,
+      icon: iconInput && iconInput.value ? iconInput.value : null,
+      color: colorInput && colorInput.value ? colorInput.value : null,
+      schedule: schedule,
+      reminder: $('gf-remind').checked ? ($('gf-time').value || null) : null
+    };
+  }
+
+  function onGoalFormSubmit(event) {
+    event.preventDefault();
+    checkForNewDay();
+    var v = readGoalForm();
+    var nameError = core.habitNameError(v.name);
+    $('gf-name-error').textContent = nameError;
+    $('gf-name-error').hidden = !nameError;
+    $('gf-name').setAttribute('aria-invalid', String(!!nameError));
+    var sch = core.cleanSchedule(v.schedule);
+    $('gf-schedule-error').textContent = sch.error || '';
+    $('gf-schedule-error').hidden = !sch.error;
+    if ($('gf-remind').checked && !v.reminder) {
+      $('gf-error').textContent = 'Choose a reminder time, or turn off the reminder.';
+      $('gf-error').hidden = false;
+      return;
+    }
+    if (nameError) { $('gf-name').focus(); return; }
+    if (sch.error) { $('gf-schedule').querySelector('input:checked').focus(); return; }
+    var r = editingId
+      ? core.updateHabit(state, editingId, v, today)
+      : core.addHabit(state, v.name, today, { icon: v.icon, color: v.color, schedule: v.schedule, reminder: v.reminder });
+    if (!r.ok) {
+      $('gf-error').textContent = r.message;
+      $('gf-error').hidden = false;
+      return;
+    }
+    var wasNew = !editingId;
+    if (!commit(r.state)) return;
+    var name = core.cleanName(v.name);
+    closeDialog('goal-form-dialog');
+    if ($('goals-dialog').open) renderManage();
+    announce(wasNew ? 'Added ' + name + '.' : 'Saved ' + name + '. Changes apply from today.');
+  }
+
+  function onGoalPause() {
+    var h = core.findHabit(state, editingId);
+    if (!h) return;
+    var to = h.status === 'paused' ? 'active' : 'paused';
+    var r = core.setHabitStatus(state, h.id, to, today);
+    if (!r.ok) { $('gf-error').textContent = r.message; $('gf-error').hidden = false; return; }
+    if (commit(r.state)) {
+      closeDialog('goal-form-dialog');
+      if ($('goals-dialog').open) renderManage();
+      announce(to === 'paused' ? h.name + ' paused. It isn’t due from today.' : h.name + ' resumed. It counts again from today.');
+    }
+  }
+
+  function onGoalRemove() {
+    var h = core.findHabit(state, editingId);
+    if (!h) return;
     var history = core.habitHistoryDates(state, h.id, today).length;
     var options = history
       ? {
           title: 'Archive “' + h.name + '”?',
           message: [
-            'It has ' + plural(history, 'day') + ' of history, so it will be archived rather than deleted.',
-            'Past days and stats keep it. You can restore it any time.'
+            'It will leave your goal list, but its ' + plural(history, 'day') + ' of history stay in your calendar and stats.',
+            'You can restore it any time from Edit goals.'
           ],
-          confirmLabel: 'Archive'
+          confirmLabel: 'Archive goal'
         }
       : {
           title: 'Delete “' + h.name + '”?',
           message: ['It has no history yet, so it will be removed completely.'],
-          confirmLabel: 'Delete',
+          confirmLabel: 'Delete goal',
           danger: true
         };
     confirmDialog(options).then(function (ok) {
       if (!ok) return;
       var r = history ? core.setHabitStatus(state, h.id, 'archived', today) : core.deleteHabit(state, h.id, today);
-      applyManage(r, history ? h.name + ' archived. Its history stays in Stats.' : h.name + ' deleted.');
+      if (!r.ok) { $('gf-error').textContent = r.message; $('gf-error').hidden = false; return; }
+      if (commit(r.state)) {
+        closeDialog('goal-form-dialog');
+        if ($('goals-dialog').open) renderManage();
+        announce(history ? h.name + ' archived. Its history stays in Stats.' : h.name + ' deleted.');
+      }
     });
   }
 
@@ -624,30 +1049,74 @@
   var STATE_LABELS = {
     locked: 'Locked In',
     partial: 'Partly done',
-    missed: 'Nothing done',
+    missed: 'Missed',
     none: 'Not tracked',
     pending: 'In progress',
     future: 'Upcoming'
   };
 
+  var INSIGHT_ICONS = { up: 'trending-up', down: 'trending-down', flat: 'minus', focus: 'target' };
+
+  function dayLong(dow) {
+    return formatDate(core.addDays('2026-09-06', dow), 'dowLong');
+  }
+
   function renderStats() {
     if (activeTab !== 'stats') return;
-    statsStale = false;
     var sum = stats.summary(state, today);
-    var hasData = sum.totalTrackedDays > 0;
+    var ins = stats.insights(state, today, dayLong);
+    var wow = stats.weekOverWeek(state, today);
+
+    // Summary
     $('stat-current').textContent = plural(sum.currentStreak, 'day');
     $('stat-best').textContent = plural(sum.bestStreak, 'day');
+    $('stat-best-sub').textContent = sum.bestStreak && sum.bestStreak === sum.currentStreak ? 'You’re on your best run' : 'Your longest run so far';
+    $('stat-rate').textContent = sum.totalTrackedDays ? sum.completionRate + '%' : '—';
     $('stat-total').textContent = String(sum.totalLockedInDays);
     $('stat-total-sub').textContent = 'of ' + plural(sum.totalTrackedDays, 'tracked day');
-    $('stat-rate').textContent = sum.completionRate + '%';
-    $('stats-empty').hidden = hasData;
-    $('analytics').hidden = !hasData;
-    renderCalendar(sum);
-    if (hasData) {
-      renderDailyChart();
-      renderHabitChart();
-      renderHabitStats();
+    var trend = $('stat-trend');
+    trend.textContent = '';
+    trend.hidden = !wow.available;
+    if (wow.available) {
+      trend.className = 'delta ' + (wow.change > 0 ? 'is-up' : wow.change < 0 ? 'is-down' : '');
+      trend.appendChild(icon(wow.change > 0 ? 'trending-up' : wow.change < 0 ? 'trending-down' : 'minus', 14));
+      trend.appendChild(document.createTextNode((wow.change > 0 ? '+' : '') + wow.change + ' pts'));
+      trend.setAttribute('aria-label', (wow.change === 0 ? 'No change' : (wow.change > 0 ? 'Up ' : 'Down ') + Math.abs(wow.change) + ' points') + ' versus the previous 7 days');
+      $('stat-rate-sub').textContent = 'Past 7 days: ' + wow.thisWeek.rate + '%, vs ' + wow.lastWeek.rate + '% the week before';
+    } else {
+      $('stat-rate-sub').textContent = 'Goals done of goals due';
     }
+
+    // Early data
+    var early = $('early-card');
+    early.hidden = ins.needed === 0 || !state.habits.length;
+    if (!early.hidden) {
+      $('early-title').textContent = ins.needed === stats.MIN.patternDays
+        ? 'Your first weekly pattern is 7 days away'
+        : 'Complete ' + plural(ins.needed, 'more day') + ' to reveal your first weekly pattern';
+      $('early-text').textContent = 'After a week of check-ins, Stats shows how this week compares with the last, which goals need attention and which days are your strongest. You’ve tracked ' + plural(ins.trackedDays, 'day') + ' so far.';
+      $('early-progress').setAttribute('aria-valuenow', String(ins.trackedDays));
+      $('early-progress-bar').style.width = Math.min(100, (ins.trackedDays / stats.MIN.patternDays) * 100) + '%';
+    }
+
+    // Insights
+    var card = $('insights-card');
+    card.hidden = !ins.items.length || !plans.can('weeklyReview');
+    $('share-week').hidden = !plans.can('sharing');
+    var list = $('insight-list');
+    list.textContent = '';
+    ins.items.forEach(function (item) {
+      var li = el('li');
+      var badge = iconSpan(INSIGHT_ICONS[item.tone] || 'info', 16, 'insight-icon is-' + item.tone);
+      badge.setAttribute('aria-hidden', 'true');
+      li.appendChild(badge);
+      li.appendChild(el('p', '', item.text));
+      list.appendChild(li);
+    });
+
+    renderCalendar(sum);
+    renderAnalytics(sum);
+    renderGoalStreaks();
   }
 
   /* Calendar */
@@ -667,12 +1136,16 @@
     if (monthIndex(calMonth) > monthIndex(now)) calMonth = now;
     if (monthIndex(calMonth) < monthIndex(first)) calMonth = first;
     $('cal-title').textContent = formatMonth(calMonth.y, calMonth.m);
-    $('cal-prev').disabled = monthIndex(calMonth) <= monthIndex(first);
-    $('cal-next').disabled = monthIndex(calMonth) >= monthIndex(now);
+    var atStart = monthIndex(calMonth) <= monthIndex(first);
+    var atEnd = monthIndex(calMonth) >= monthIndex(now);
+    $('cal-prev').disabled = atStart;
+    $('cal-next').disabled = atEnd;
+    $('cal-prev').hidden = atStart && atEnd;
+    $('cal-next').hidden = atStart && atEnd;
 
     var grid = $('cal-grid');
     grid.textContent = '';
-    var weeks = stats.monthGrid(state, calMonth.y, calMonth.m, today);
+    var weeks = stats.monthGrid(state, calMonth.y, calMonth.m, today, weekStart());
     weeks[0].forEach(function (cell) {
       var head = el('div', 'cal-dow', formatDate(cell.date, 'weekday'));
       head.setAttribute('aria-hidden', 'true');
@@ -694,78 +1167,256 @@
           node.type = 'button';
           node.dataset.date = cell.date;
           node.setAttribute('aria-pressed', String(cell.date === selectedDate));
-          var rec = state.days[cell.date];
-          var detail = rec && rec.habits.length ? ', ' + rec.done.length + ' of ' + rec.habits.length + ' goals' : '';
+          var s = core.recordSummary(state.days[cell.date]);
+          var detail = s.total ? ', ' + s.completed + ' of ' + s.total + ' goals' : '';
           node.setAttribute('aria-label', formatDate(cell.date, 'day') + (cell.isToday ? ' (today)' : '') + ': ' + STATE_LABELS[cell.state] + detail);
         }
-        node.appendChild(el('span', 'cal-num', String(cell.day)));
+        node.appendChild(el('span', '', String(cell.day)));
         if (cell.state === 'locked') {
-          var mark = el('span', 'cal-mark', '✓');
+          var mark = iconSpan('check', 10, 'cal-mark');
           mark.setAttribute('aria-hidden', 'true');
           node.appendChild(mark);
         }
         grid.appendChild(node);
       });
     });
-    renderDayDetail();
+    renderDayPanel();
+  }
+
+  function renderDayDetail(box, date) {
+    box.textContent = '';
+    var d = stats.dayDetail(state, date, today);
+    box.appendChild(el('p', 'detail-date', formatDate(date, 'long') + (date === today ? ' · Today' : '')));
+    var sub = el('p', 'detail-sub');
+    if (d.total) sub.appendChild(document.createTextNode(d.completed + ' of ' + d.total + ' goals completed'));
+    var badge = el('span', 'detail-badge is-' + d.state, STATE_LABELS[d.state]);
+    sub.appendChild(badge);
+    box.appendChild(sub);
+    if (d.focus) {
+      var f = el('p', 'detail-focus');
+      f.appendChild(el('span', 'visually-hidden', 'Focus: '));
+      f.appendChild(document.createTextNode(d.focus));
+      box.appendChild(f);
+    }
+    if (!d.items.length) {
+      box.appendChild(el('p', 'detail-empty', 'No goals were due on this day, so it doesn’t count toward or against your streak.'));
+      return;
+    }
+    var ul = el('ul', 'detail-list');
+    d.items.forEach(function (item) {
+      var li = el('li', item.done ? 'is-done' : 'is-missed');
+      li.appendChild(icon(item.done ? 'circle-check' : 'x', 18));
+      var text = el('span');
+      text.appendChild(document.createTextNode(item.name));
+      if (item.flexible) text.appendChild(el('span', 'detail-flex', ' · weekly goal'));
+      text.appendChild(el('span', 'visually-hidden', item.done ? ' (done)' : ' (not done)'));
+      li.appendChild(text);
+      ul.appendChild(li);
+    });
+    box.appendChild(ul);
+  }
+
+  function renderDayPanel() {
+    var body = $('day-panel-body');
+    var inMonth = selectedDate && selectedDate.slice(0, 7) === calMonth.y + '-' + (calMonth.m < 10 ? '0' : '') + calMonth.m;
+    if (!inMonth) {
+      body.textContent = '';
+      body.appendChild(el('p', 'detail-date', 'Day details'));
+      body.appendChild(el('p', 'detail-empty', 'Select a day in the calendar to see which goals were done.'));
+      return;
+    }
+    renderDayDetail(body, selectedDate);
   }
 
   function onCalendarClick(event) {
     var btn = event.target.closest('button[data-date]');
     if (!btn) return;
-    selectedDate = selectedDate === btn.dataset.date ? null : btn.dataset.date;
+    var date = btn.dataset.date;
+    selectedDate = date;
     renderCalendar(stats.summary(state, today));
-    var again = document.querySelector('#cal-grid button[data-date="' + btn.dataset.date + '"]');
-    if (again) again.focus();
+    var again = document.querySelector('#cal-grid button[data-date="' + date + '"]');
+    if (WIDE.matches) {
+      if (again) again.focus();
+      announce(formatDate(date, 'day') + ' details shown beside the calendar.');
+      return;
+    }
+    // Phones and tablets: a bottom sheet that doesn't push the page around.
+    $('day-dialog-title').textContent = 'Day details';
+    renderDayDetail($('day-dialog-body'), date);
+    dialogOpeners['day-dialog'] = again;
+    if (typeof $('day-dialog').showModal === 'function') $('day-dialog').showModal();
+    $('day-dialog-close').focus();
   }
 
   function moveMonth(delta) {
     var i = monthIndex(calMonth) + delta;
     calMonth = { y: Math.floor(i / 12), m: (i % 12) + 1 };
-    selectedDate = null;
     renderCalendar(stats.summary(state, today));
-    announce(formatMonth(calMonth.y, calMonth.m));
   }
 
-  function renderDayDetail() {
-    var box = $('day-detail');
+  /* Analytics */
+
+  function renderAnalytics(sum) {
+    var has = sum.totalTrackedDays > 0;
+    renderDailyChart();
+    renderWeekdayChart();
+    renderHabitChart();
+    $('analytics').hidden = !has && !state.habits.length;
+  }
+
+  function renderWeekdayChart() {
+    var box = $('weekday-chart');
     box.textContent = '';
-    if (!selectedDate || selectedDate.slice(0, 7) !== calMonth.y + '-' + (calMonth.m < 10 ? '0' : '') + calMonth.m) {
-      box.hidden = true;
+    var wd = stats.weekdayStrength(state, today);
+    if (!wd.available) {
+      var need = Math.max(0, stats.MIN.weekdayDays - wd.trackedDays);
+      var empty = el('div', 'empty');
+      empty.appendChild(icon('calendar-days', 22));
+      empty.appendChild(el('p', '', need
+        ? 'Track ' + plural(need, 'more day') + ' to see your strongest and weakest days of the week.'
+        : 'Your days of the week are about even so far. Once one stands out, it will show here.'));
+      box.appendChild(empty);
       return;
     }
-    var d = stats.dayDetail(state, selectedDate, today);
-    box.hidden = false;
-    var head = el('div', 'detail-head');
-    head.appendChild(el('h3', 'detail-title', formatDate(selectedDate, 'day') + (selectedDate === today ? ' · Today' : '')));
-    var close = el('button', 'icon-btn', '✕');
-    close.type = 'button';
-    close.setAttribute('aria-label', 'Close day details');
-    close.addEventListener('click', function () {
-      var date = selectedDate;
-      selectedDate = null;
-      renderCalendar(stats.summary(state, today));
-      var cell = document.querySelector('#cal-grid button[data-date="' + date + '"]');
-      if (cell) cell.focus();
-    });
-    head.appendChild(close);
-    box.appendChild(head);
-    if (!d.total) {
-      box.appendChild(el('p', 'muted', 'No goals were tracked on this day.'));
-      return;
-    }
-    box.appendChild(el('p', 'detail-sub', d.completed + ' / ' + d.total + ' Goals Completed' + (d.lockedIn ? ' · Locked In ✓' : '')));
-    var ul = el('ul', 'detail-list');
-    d.items.forEach(function (item) {
-      var li = el('li', item.done ? 'is-done' : 'is-missed');
-      var mark = el('span', 'detail-mark', item.done ? '✓' : '✗');
-      mark.setAttribute('aria-hidden', 'true');
-      li.appendChild(mark);
-      li.appendChild(el('span', '', item.name));
-      li.appendChild(el('span', 'visually-hidden', item.done ? ' (done)' : ' (not done)'));
+    var order = weekStart() === 1 ? [1, 2, 3, 4, 5, 6, 0] : [0, 1, 2, 3, 4, 5, 6];
+    box.appendChild(el('p', 'caption', 'Completion rate for each day of the week over the last 12 weeks.'));
+    var ul = el('ul', 'weekday-bars');
+    ul.setAttribute('aria-label', 'Completion by weekday');
+    order.forEach(function (dow) {
+      var b = wd.days[dow];
+      var li = el('li');
+      var label = dayLong(dow) + ': ' + (b.rate === null ? 'no data' : b.rate + '%') +
+        (dow === wd.strongest.dow ? ', strongest' : dow === wd.weakest.dow ? ', weakest' : '');
+      li.setAttribute('aria-label', label);
+      var value = el('span', 'wd-value', b.rate === null ? '—' : b.rate + '%');
+      value.setAttribute('aria-hidden', 'true');
+      li.appendChild(value);
+      var bar = el('span', 'wd-bar' + (b.rate !== null ? ' has-data' : '') + (dow === wd.strongest.dow ? ' is-best' : '') + (dow === wd.weakest.dow ? ' is-worst' : ''));
+      bar.style.height = (b.rate === null ? 2 : Math.max(4, b.rate * 0.9)) + 'px';
+      bar.setAttribute('aria-hidden', 'true');
+      li.appendChild(bar);
+      var name = el('span', 'wd-label', dayShort(dow));
+      name.setAttribute('aria-hidden', 'true');
+      li.appendChild(name);
+      var tag = el('span', 'wd-tag', dow === wd.strongest.dow ? 'Best' : dow === wd.weakest.dow ? 'Hardest' : '');
+      tag.setAttribute('aria-hidden', 'true');
+      li.appendChild(tag);
       ul.appendChild(li);
     });
     box.appendChild(ul);
+  }
+
+  function statusTag(s) {
+    return s.status === 'active' ? '' : s.status === 'paused' ? 'Paused' : 'Archived';
+  }
+
+  function unitText(n, unit) {
+    return plural(n, unit);
+  }
+
+  function renderHabitChart() {
+    var list = $('chart-habits');
+    list.textContent = '';
+    var rows = stats.habitStats(state, today, weekStart())
+      .filter(function (s) { return s.periods > 0; })
+      .sort(function (a, b) { return b.completionRate - a.completionRate || b.periods - a.periods; });
+    if (!rows.length) {
+      var li = el('li', 'empty');
+      li.appendChild(icon('target', 22));
+      li.appendChild(el('p', '', 'Each goal’s consistency appears after its first full day (or week, for times-per-week goals).'));
+      list.appendChild(li);
+      return;
+    }
+    rows.forEach(function (s) {
+      var item = el('li', 'hbar');
+      if (s.color) item.dataset.color = s.color;
+      var head = el('div', 'hbar-head');
+      var chip = goalChip(s, true);
+      if (chip) head.appendChild(chip);
+      head.appendChild(el('span', 'hbar-name', s.name));
+      if (statusTag(s)) head.appendChild(el('span', 'tag', statusTag(s)));
+      head.appendChild(el('span', 'hbar-value', s.completionRate + '%'));
+      item.appendChild(head);
+      var track = el('div', 'hbar-track');
+      var fill = el('div', 'hbar-fill');
+      fill.style.width = s.completionRate + '%';
+      track.appendChild(fill);
+      track.setAttribute('aria-hidden', 'true');
+      item.appendChild(track);
+      var detail = s.unit === 'week'
+        ? ': target met in ' + s.completionRate + '% of ' + unitText(s.periods, 'week') + '.'
+        : ': done on ' + s.completed + ' of ' + unitText(s.periods, 'day') + ' it was due.';
+      item.appendChild(el('span', 'visually-hidden', detail));
+      list.appendChild(item);
+    });
+  }
+
+  function renderGoalStreaks() {
+    var list = $('habit-stats');
+    list.textContent = '';
+    var all = stats.habitStats(state, today, weekStart());
+    $('goal-streaks-card').hidden = !all.length;
+    all.forEach(function (s) {
+      var li = el('li', 'habit-stat');
+      var head = el('div', 'habit-stat-head');
+      var chip = goalChip(s, true);
+      if (chip) head.appendChild(chip);
+      head.appendChild(el('h3', 'habit-stat-name', s.name));
+      if (statusTag(s)) head.appendChild(el('span', 'tag', statusTag(s)));
+      head.appendChild(el('span', 'tag', scheduleText(s.schedule)));
+      li.appendChild(head);
+      var dl = el('dl', 'habit-stat-grid');
+      var unit = s.unit;
+      [
+        [unit === 'week' ? 'Weeks target met' : 'Completion rate', s.periods ? s.completionRate + '%' : '—'],
+        ['Goal streak', s.status === 'active' ? unitText(s.currentStreak, unit) : '—'],
+        ['Best goal streak', unitText(s.bestStreak, unit)],
+        [unit === 'week' ? (s.thisWeek ? 'This week' : 'Times done') : 'Times done',
+          unit === 'week' && s.thisWeek ? s.thisWeek.count + ' of ' + s.thisWeek.target : plural(s.completed, 'time')]
+      ].forEach(function (pair) {
+        var div = el('div');
+        div.appendChild(el('dt', '', pair[0]));
+        div.appendChild(el('dd', '', pair[1]));
+        dl.appendChild(div);
+      });
+      li.appendChild(dl);
+      list.appendChild(li);
+    });
+  }
+
+  function onRangeChange(event) {
+    if (event.target.name !== 'range' || !RANGES[event.target.value]) return;
+    chartRange = event.target.value;
+    renderDailyChart();
+  }
+
+  /* Weekly summary to share (Web Share, or copied to the clipboard) */
+
+  function weeklySummaryText() {
+    var w = stats.windowTotals(state, today);
+    var sum = stats.summary(state, today);
+    var lines = ['Day by Day: my past 7 days'];
+    if (w.days) lines.push(w.rate + '% of goals done, ' + w.locked + ' of ' + plural(w.days, 'tracked day') + ' Locked In.');
+    lines.push('Locked-in streak: ' + plural(sum.currentStreak, 'day') + ' (best ' + plural(sum.bestStreak, 'day') + ').');
+    return lines.join('\n');
+  }
+
+  function onShareWeek() {
+    var text = weeklySummaryText();
+    if (navigator.share) {
+      navigator.share({ title: 'My week in Day by Day', text: text }).catch(function () {});
+      return;
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        announce('Weekly summary copied to the clipboard.');
+        showNotice('Weekly summary copied. Paste it wherever you like.');
+      }, function () {
+        showNotice(text);
+      });
+      return;
+    }
+    showNotice(text);
   }
 
   /* Chart 1: daily completion */
@@ -790,6 +1441,17 @@
     var band = pw / n;
 
     var tracked = series.filter(function (p) { return p.percentage !== null; });
+    var enough = tracked.length >= stats.MIN.chartDays;
+    $('chart-daily-empty').hidden = enough;
+    $('chart-daily-details').hidden = !enough;
+    if (!enough) {
+      var need = stats.MIN.chartDays - tracked.length;
+      $('chart-daily-caption').textContent = '';
+      $('chart-daily-empty-text').textContent = tracked.length
+        ? 'Track ' + plural(need, 'more day') + ' in this range to see your daily completion trend. One or two points aren’t a trend yet.'
+        : 'No tracked days in this range yet. Check in on Today and your trend will build here.';
+      return;
+    }
     var avg = tracked.length ? Math.round(tracked.reduce(function (a, p) { return a + p.percentage; }, 0) / tracked.length) : 0;
     var locked = tracked.filter(function (p) { return p.lockedIn; }).length;
     var rangeText = chartRange === 'all' ? 'all time' : 'the last ' + n + ' days';
@@ -949,80 +1611,141 @@
     if (tip) tip.hidden = true;
   }
 
-  /* Chart 2: consistency per goal */
 
-  function statusTag(s) {
-    return s.status === 'active' ? '' : s.status === 'paused' ? 'paused' : 'archived';
+  /* ---------------- Settings ---------------- */
+
+  function renderSettings() {
+    Array.prototype.forEach.call(document.querySelectorAll('input[name="weekstart"]'), function (r) {
+      r.checked = Number(r.value) === weekStart();
+    });
+    renderNotifications();
+    renderPlan();
+    renderNetwork();
+    $('export-data').disabled = !plans.can('export') || (!state.habits.length && !Object.keys(state.days).length);
+    $('reset-data').disabled = !state.habits.length && !Object.keys(state.days).length;
   }
 
-  function renderHabitChart() {
-    var list = $('chart-habits');
-    list.textContent = '';
-    var rows = stats.habitStats(state, today)
-      .filter(function (s) { return s.activeDays > 0; })
-      .sort(function (a, b) { return b.completionRate - a.completionRate || b.activeDays - a.activeDays; });
-    rows.forEach(function (s) {
-      var li = el('li', 'hbar');
-      var head = el('div', 'hbar-head');
-      var name = el('span', 'hbar-name', s.name);
-      if (statusTag(s)) name.appendChild(el('span', 'tag', statusTag(s)));
-      head.appendChild(name);
-      head.appendChild(el('span', 'hbar-value', s.completionRate + '%'));
-      li.appendChild(head);
-      var track = el('div', 'hbar-track');
-      var fill = el('div', 'hbar-fill');
-      fill.style.width = s.completionRate + '%';
-      track.appendChild(fill);
-      track.setAttribute('aria-hidden', 'true');
-      li.appendChild(track);
-      li.appendChild(el('span', 'visually-hidden', ': done on ' + s.completed + ' of ' + plural(s.activeDays, 'day') + ' it was a goal.'));
-      li.title = s.name + ': ' + s.completed + ' of ' + plural(s.activeDays, 'day');
-      list.appendChild(li);
+  function onWeekStart(event) {
+    if (event.target.name !== 'weekstart') return;
+    var r = core.setWeekStart(state, Number(event.target.value));
+    if (r.ok && commit(r.state)) {
+      renderedGoalSignature = null;
+      announce('Weeks now start on ' + (weekStart() === 1 ? 'Monday' : 'Sunday') + '.');
+    }
+  }
+
+  function renderNotifications() {
+    var on = readPref(NOTIFY_KEY, true);
+    $('notify-toggle').checked = on;
+    var text = $('notify-permission-text');
+    var btn = $('notify-permission');
+    btn.hidden = true;
+    if (!('Notification' in window)) {
+      text.textContent = 'This browser doesn’t support system notifications. Reminders still appear inside Day by Day.';
+    } else if (Notification.permission === 'granted') {
+      text.textContent = 'Allowed. Reminders can appear as system notifications while Day by Day is open.';
+    } else if (Notification.permission === 'denied') {
+      text.textContent = 'Blocked in your browser’s site settings. Reminders still appear inside Day by Day.';
+    } else {
+      text.textContent = 'Not allowed yet. Allow them to get reminders as system notifications, not just inside the app.';
+      btn.hidden = false;
+    }
+  }
+
+  function onNotifyToggle() {
+    writePref(NOTIFY_KEY, $('notify-toggle').checked);
+    announce($('notify-toggle').checked ? 'Reminders on.' : 'Reminders off.');
+  }
+
+  function onNotifyPermission() {
+    if (!('Notification' in window)) return;
+    Notification.requestPermission().then(function () {
+      renderNotifications();
+      announce(Notification.permission === 'granted' ? 'Notifications allowed.' : 'Notifications not allowed.');
     });
   }
 
-  function renderHabitStats() {
-    var list = $('habit-stats');
-    list.textContent = '';
-    stats.habitStats(state, today).forEach(function (s) {
-      var li = el('li', 'habit-stat');
-      var head = el('div', 'habit-stat-head');
-      head.appendChild(el('h3', 'habit-stat-name', s.name));
-      if (statusTag(s)) head.appendChild(el('span', 'tag', statusTag(s)));
-      li.appendChild(head);
-      var dl = el('dl', 'habit-stat-grid');
-      [
-        ['Completion', s.activeDays ? s.completionRate + '%' : '—'],
-        ['Current streak', s.status === 'active' ? plural(s.currentStreak, 'day') : '—'],
-        ['Best streak', plural(s.bestStreak, 'day')],
-        ['Completed', plural(s.completed, 'time')]
-      ].forEach(function (pair) {
-        var div = el('div');
-        div.appendChild(el('dt', '', pair[0]));
-        div.appendChild(el('dd', '', pair[1]));
-        dl.appendChild(div);
+  function renderPlan() {
+    var p = plans.currentPlan();
+    $('plan-name').textContent = p.name;
+    $('plan-description').textContent = p.description;
+    var body = $('plan-table-body');
+    if (body.children.length) return;
+    plans.FEATURES.forEach(function (f) {
+      var tr = el('tr');
+      tr.appendChild(el('td', '', f.label));
+      [f.free, f.pro].forEach(function (v) {
+        var td = el('td');
+        if (v === true || v === false) {
+          td.className = v ? 'plan-yes' : 'plan-no';
+          td.appendChild(icon(v ? 'check' : 'minus', 18));
+          td.appendChild(el('span', 'visually-hidden', v ? 'Included' : 'Not included'));
+        } else {
+          td.textContent = v;
+        }
+        tr.appendChild(td);
       });
-      li.appendChild(dl);
-      list.appendChild(li);
+      body.appendChild(tr);
     });
   }
 
-  function onRangeChange(event) {
-    if (event.target.name !== 'range' || !RANGES[event.target.value]) return;
-    chartRange = event.target.value;
-    renderDailyChart();
+  function renderNetwork() {
+    var offline = navigator.onLine === false;
+    $('net-status').hidden = !offline;
+  }
+
+  /* ---------------- Reminders ---------------- */
+
+  /**
+   * Checked every 30 seconds while the app is open: a goal with a reminder
+   * time that has passed today, is due today and isn't done gets one
+   * reminder per day, in the app and (if allowed) as a system notification.
+   */
+  function checkReminders() {
+    if (!plans.can('reminders') || !readPref(NOTIFY_KEY, true)) return;
+    var rec = state.days[today];
+    if (!rec) return;
+    var now = new Date();
+    var hhmm = (now.getHours() < 10 ? '0' : '') + now.getHours() + ':' + (now.getMinutes() < 10 ? '0' : '') + now.getMinutes();
+    var sent = readPref(REMINDED_KEY, {});
+    if (sent.date !== today) sent = { date: today, ids: [] };
+    var due = rec.habits.filter(function (entry) {
+      var h = core.findHabit(state, entry.id);
+      return h && h.reminder && h.reminder <= hhmm && rec.done.indexOf(entry.id) < 0 && sent.ids.indexOf(entry.id) < 0;
+    });
+    if (!due.length) return;
+    due.forEach(function (entry) { sent.ids.push(entry.id); });
+    writePref(REMINDED_KEY, sent);
+    var names = due.map(function (e) { return e.name; });
+    var body = names.length === 1 ? names[0] + ' isn’t checked off yet today.' : names.join(', ') + ' aren’t checked off yet today.';
+    showNotice('Reminder: ' + body, { label: 'Go to Today', run: function () { hideNotice(); selectTab('today', true); } });
+    if ('Notification' in window && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
+      try {
+        var n = new Notification('Day by Day', { body: body, tag: 'dbd-' + today, icon: 'icon.svg' });
+        n.onclick = function () { window.focus(); selectTab('today'); n.close(); };
+      } catch (e) {
+        // Some browsers only allow notifications from a service worker.
+      }
+    }
+  }
+
+  /* ---------------- Offline ---------------- */
+
+  function registerServiceWorker() {
+    if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
+    navigator.serviceWorker.register('sw.js').catch(function () {
+      // The app still works online; offline loading just isn't available.
+    });
   }
 
   /* ---------------- Render ---------------- */
 
   function render() {
     renderToday();
-    $('reset-data').hidden = !state.habits.length && !Object.keys(state.days).length;
-    $('export-data').disabled = !state.habits.length && !Object.keys(state.days).length;
-    // Don't rebuild the editor under someone typing a new name.
-    var typing = document.activeElement && document.activeElement.classList.contains('manage-name');
-    if ($('goals-dialog').open && !typing) renderManage();
+    // Don't rebuild the editor under a drag.
+    if ($('goals-dialog').open && !drag) renderManage();
     if (activeTab === 'stats') renderStats();
+    if (activeTab === 'settings') renderSettings();
   }
 
   /* ---------------- Export / import / reset ---------------- */
@@ -1167,6 +1890,18 @@
   function saveMeta(meta) {
     syncMeta = meta;
     sync.writeMeta(storage, meta);
+    renderSyncLast();
+  }
+
+  function renderSyncLast() {
+    var line = $('sync-last');
+    if (!line) return;
+    if (!cloudUser || !syncMeta.syncedAt) {
+      line.textContent = '';
+      return;
+    }
+    var t = new Date(syncMeta.syncedAt);
+    line.textContent = 'Last successful sync: ' + t.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + '.';
   }
 
   /**
@@ -1176,7 +1911,7 @@
   function holdForAccount() {
     if (!waitingForAccount || !core.ensureDays(state, today).missed.length) return false;
     announce('Checking your account for newer progress. Try again in a moment.');
-    $('goals-hint').textContent = 'Checking your account for newer progress…';
+    $('hero-status').textContent = 'Checking your account for newer progress…';
     return true;
   }
 
@@ -1196,8 +1931,10 @@
     $('account-signed-in').hidden = !signedIn;
     if (signedIn) $('account-name').textContent = cloudUser.email || cloudUser.name || 'your Google account';
     $('data-description').textContent = signedIn
-      ? 'Your progress is saved on this device and in your account. You can still export a backup file.'
-      : 'Everything is stored only in this browser. Export a backup to keep it safe or move it to another device.';
+      ? 'Your progress is saved on this device and in your account. Export a backup file any time.'
+      : 'Everything is stored in this browser. Export a backup file to keep it safe or move it to another device.';
+    $('privacy-account-note').textContent = signedIn ? ' and in your private account, which only you can read' : '';
+    renderSyncLast();
   }
 
   /** Called after every user change that was saved on this device. */
@@ -1349,7 +2086,7 @@
   function startCloud() {
     if (!cloud || !cloud.isConfigured()) return;
     $('account-view').hidden = false;
-    $('footer-text').textContent = 'Day by Day works offline. Signing in is optional. No ads, no tracking.';
+    $('footer-text').textContent = 'Day by Day works offline. Signing in is optional.';
     renderAccount();
     $('sign-in').addEventListener('click', onSignIn);
     $('sign-out').addEventListener('click', onSignOut);
@@ -1370,42 +2107,74 @@
   /* ---------------- Start-up ---------------- */
 
   function init() {
+    icons.hydrate(document);
     var loaded = store.load(storage, new Date());
     state = loaded.state;
     readOnly = loaded.readOnly;
     if (loaded.notice) showNotice(loaded.notice);
 
+    initTooltips();
+    syncNavOrientation();
+    if (SIDEBAR.addEventListener) SIDEBAR.addEventListener('change', syncNavOrientation);
     TABS.forEach(function (t) {
       $('tab-' + t).addEventListener('click', function () { selectTab(t); });
       $('tab-' + t).addEventListener('keydown', onTabKey);
     });
 
-    $('goal-list').addEventListener('change', onGoalChange);
+    // Today
+    $('goals-card').addEventListener('change', onGoalChange);
     $('first-goal-form').addEventListener('submit', onFirstGoal);
-    $('edit-goals').addEventListener('click', function () { openManage(false); });
-    $('add-goal-link').addEventListener('click', function () { openManage(true); });
-    $('goals-empty-edit').addEventListener('click', function () { openManage(false); });
-    $('manage-done').addEventListener('click', closeManage);
-    $('add-goal-form').addEventListener('submit', onAddGoal);
+    $('focus-form').addEventListener('submit', onFocusSubmit);
+    $('focus-input').addEventListener('blur', saveFocus);
+    $('edit-goals').addEventListener('click', openManage);
+    $('add-goal').addEventListener('click', function () { openGoalForm(null); });
+
+    // Edit goals
+    $('manage-done').addEventListener('click', function () { closeDialog('goals-dialog'); });
+    $('manage-add').addEventListener('click', function () { openGoalForm(null); });
     $('goals-dialog').addEventListener('click', onManageClick);
-    $('goals-dialog').addEventListener('change', onRename);
-    $('goals-dialog').addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' && e.target.classList.contains('manage-name')) {
-        e.preventDefault();
-        e.target.blur();
-      }
-    });
+    $('goals-dialog').addEventListener('keydown', onHandleKey);
+    $('manage-active').addEventListener('pointerdown', onHandleDown);
+    $('manage-active').addEventListener('pointermove', onHandleMove);
+    $('manage-active').addEventListener('pointerup', onHandleUp);
+    $('manage-active').addEventListener('pointercancel', onHandleUp);
     $('goals-dialog').addEventListener('close', function () {
       manageError('');
-      if (!$('goals-card').hidden) $('edit-goals').focus();
-      else $('first-goal').focus();
+      restoreFocus('goals-dialog', state.habits.length ? $('edit-goals') : $('first-goal'));
     });
 
+    // Goal form
+    $('goal-form').addEventListener('submit', onGoalFormSubmit);
+    $('goal-form').addEventListener('change', function (e) {
+      if (e.target.name === 'gf-schedule' || e.target.id === 'gf-remind') syncScheduleFields();
+    });
+    $('goal-form-close').addEventListener('click', function () { closeDialog('goal-form-dialog'); });
+    $('gf-cancel').addEventListener('click', function () { closeDialog('goal-form-dialog'); });
+    $('gf-pause').addEventListener('click', onGoalPause);
+    $('gf-remove').addEventListener('click', onGoalRemove);
+    $('goal-form-dialog').addEventListener('close', function () {
+      var fallback = $('goals-dialog').open ? $('manage-add') : state.habits.length ? $('add-goal') : $('first-goal');
+      restoreFocus('goal-form-dialog', fallback);
+      editingId = null;
+    });
+
+    // Stats
     $('cal-grid').addEventListener('click', onCalendarClick);
     $('cal-prev').addEventListener('click', function () { moveMonth(-1); });
     $('cal-next').addEventListener('click', function () { moveMonth(1); });
     $('range-control').addEventListener('change', onRangeChange);
+    $('share-week').addEventListener('click', onShareWeek);
+    $('early-action').addEventListener('click', function () { selectTab('today', true); });
+    $('day-dialog-close').addEventListener('click', function () { closeDialog('day-dialog'); });
+    $('day-dialog').addEventListener('close', function () { restoreFocus('day-dialog', $('cal-grid')); });
+    WIDE.addEventListener && WIDE.addEventListener('change', function () {
+      if (WIDE.matches && $('day-dialog').open) closeDialog('day-dialog');
+    });
 
+    // Settings
+    $('weekstart-control').addEventListener('change', onWeekStart);
+    $('notify-toggle').addEventListener('change', onNotifyToggle);
+    $('notify-permission').addEventListener('click', onNotifyPermission);
     $('export-data').addEventListener('click', onExport);
     $('import-data').addEventListener('click', function () { $('import-file').click(); });
     $('import-file').addEventListener('change', onImportFile);
@@ -1417,12 +2186,17 @@
     $('notice-action').addEventListener('click', function () {
       if (noticeAction) noticeAction.run();
     });
+    window.addEventListener('online', function () { renderNetwork(); });
+    window.addEventListener('offline', function () { renderNetwork(); });
 
     document.addEventListener('visibilitychange', function () {
       if (!document.hidden) checkForNewDay();
     });
     window.addEventListener('focus', checkForNewDay);
-    setInterval(checkForNewDay, 30 * 1000);
+    setInterval(function () {
+      checkForNewDay();
+      checkReminders();
+    }, 30 * 1000);
 
     var resizeTimer = null;
     window.addEventListener('resize', function () {
@@ -1434,6 +2208,8 @@
     refreshDays();
     selectTab(location.hash.slice(1));
     render();
+    checkReminders();
+    registerServiceWorker();
   }
 
   init();

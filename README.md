@@ -1,16 +1,17 @@
 # Day by Day
 
-A lightweight, mobile-friendly daily goal tracker built around one question: **how many days in a row have I been Locked In?**
+**Day by Day turns a tiny daily check-in into a clear weekly plan for becoming more consistent.**
 
-Add the daily goals you want to stay consistent with. Each day you check them off; when every goal for that day is done, the day is **Locked In** and your streak grows. Miss a goal (or a whole day) and the streak resets, but nothing is ever deleted: every day stays in your history and Stats. There is no challenge length and nothing to "finish". It just keeps going.
+Add the goals you want to stay consistent with. Each day you check them off; when every goal due that day is done, the day is **Locked In** and your locked-in streak grows. Miss a goal (or a whole day) and the streak resets, but nothing is ever deleted: every day stays in your history, and Stats turns it into plain-language weekly insights.
 
 Open the app → check off your goals → leave.
 
-- Plain HTML, CSS and JavaScript. No framework, no build step, no npm dependencies.
-- Works offline. Data is always saved in your browser's `localStorage` first.
+- Plain HTML, CSS and JavaScript. No framework, no build step, no runtime dependencies. The Inter typeface and a subset of [Lucide](https://lucide.dev) icons are bundled (`fonts/`, `js/icons.js`, licences included).
+- Works offline, including opening the app with no connection (a service worker caches it). Data is always saved in your browser's `localStorage` first.
+- Can be installed as an app (web manifest), with a **Check in today** shortcut.
 - Optional **Sign in with Google** saves your progress to your account and syncs it across devices (Firebase; see [Sign-in and sync](#sign-in-and-sync)). Sign-in stays hidden until it is configured.
 - Light and dark themes. **Auto** follows your device setting; **Light** or **Dark** overrides it. The choice is saved per device and is not part of exported data.
-- No analytics, ads or payments.
+- **No ads, no tracking.** No analytics, no third-party trackers, and data is never sold or shared.
 
 ## Running the app
 
@@ -30,15 +31,15 @@ To use it on a phone, host the folder on any static web host (GitHub Pages, Netl
 
 GitHub Pages lets browsers keep CSS and JavaScript for about 10 minutes. Without a fix, visitors could briefly get new HTML with old styles. Every stylesheet and script link in `index.html` therefore ends in the same version tag, such as `css/styles.css?v=3`.
 
-**Whenever you change a file in `css/` or `js/`, bump that number in every link** (for example, `v=3` to `v=4`). `npm test` fails if the links don't all share one version.
+**Whenever you change a file in `css/` or `js/`, bump that number in every link _and_ `VERSION` in `sw.js`** (for example, `11` to `12`). The service worker caches exactly those versions for offline use, so a new `VERSION` is what tells installed copies to update. `npm test` fails if the links and `sw.js` don't all share one version.
 
 ## How it works
 
-The app has three tabs.
+The app has three sections: a left sidebar on screens 768px and wider, and a bottom tab bar on phones (it respects the safe area and never covers content).
 
-- **Today:** your current Locked In streak (and your best), then **Today's Goals** with a progress bar. Ticking a goal saves instantly. When every goal is done the card switches to **LOCKED IN ✓**. **Edit** opens the goal editor.
-- **Stats:** current streak, best streak, total Locked In days and completion rate; a month calendar of how every day went (tap a day for its details); a daily-completion chart (7 / 30 / 90 days / all time); a habit-consistency chart; and per-goal stats.
-- **Settings:** appearance (Auto / Light / Dark theme), your account (sign in/out and sync status) and your data (export, import, delete everything).
+- **Today:** a hero card with today's date, your locked-in streak, your best streak, a progress ring and a plain message ("One more goal to lock in today."). Below: an optional **Today's focus**, then today's goals. Ticking a goal saves instantly. When the last one is done, the ring completes, a check draws in and the card says **Day locked in**. There's no confetti, and it's still with reduced motion. Times-per-week goals sit in a **This week** group with their weekly progress.
+- **Stats:** locked-in streak, best locked-in streak, completion rate (with week-over-week change once there's enough data) and locked-in days; plain-language insights about this week; a month calendar with day details (a side panel on wide screens, a bottom sheet on phones); daily completion (7 / 30 / 90 days / all time), by weekday and per-goal consistency; and each goal's own streak.
+- **Settings:** Appearance (theme, week start), Notifications, Account and syncing, Subscription, Data and privacy (export and import) and Advanced (delete everything).
 
 | Situation | What happens |
 | --- | --- |
@@ -46,17 +47,33 @@ The app has three tabs.
 | Today isn't finished yet | Your streak still shows yesterday's run. Today only counts once it's Locked In. |
 | A day ends with some goals not done | That day is recorded as partial and the streak resets. Next morning the app tells you why. |
 | You don't open the app for a day or more | Those days are recorded as missed (nothing done) the next time you open it, and the streak resets. |
-| Every goal is paused | The day is neutral: it neither counts toward nor breaks your streak. |
+| Every goal is paused, or nothing is scheduled that day | The day is neutral: it neither counts toward nor breaks your streak. |
+| A goal is times-per-week | It shows every day and can be ticked any day, but it doesn't decide whether a day is Locked In; it's tracked by week. |
 
-**Definitions.** A *Locked In day* is a day where every goal required that day was done. The *current streak* is the run of consecutive Locked In days ending today (or yesterday, while today is in progress); *best streak* is the longest such run ever. *Completion rate* is goals done ÷ goals due over every tracked day. Days are the device's local calendar days. If the clock is set backwards, nothing is back-filled or rewritten.
+**Definitions.** A *Locked In day* is a day where every goal due that day was done. The **locked-in streak** is the run of consecutive Locked In days ending today (or yesterday, while today is in progress); the *best locked-in streak* is the longest such run ever. A **goal streak** is different: the days (or weeks, for times-per-week goals) in a row that one goal was done. A goal can have a long goal streak while the locked-in streak is 0, because the locked-in streak needs every goal; Stats explains this next to the goal streaks. *Completion rate* is goals done ÷ goals due over every tracked day. Days are the device's local calendar days. If the clock is set backwards, nothing is back-filled or rewritten.
+
+**Insights only appear with enough real data.** Weekly patterns need 7 tracked days (until then Stats says exactly how many more are needed). Week-over-week change needs 3 tracked days in each of the last two 7-day windows. Strongest and weakest weekdays need 14 tracked days and at least two of each weekday compared. A "biggest opportunity" is named only when one goal is clearly behind the others. The daily chart is drawn once there are 3 tracked days in the range. Nothing is ever filled in with sample data.
 
 ### Managing goals
 
-In **Edit goals** you can add, rename (edit the name in place), reorder (↑ ↓), pause (a temporary break; resume any time) and remove goals.
+**Edit goals** lists your goals. Drag a handle to reorder (or focus it and use ↑/↓), and use **Edit** to open a goal. The goal form has: name, an optional icon and colour, a **schedule** (every day, weekdays, selected days, or a number of times per week), an optional **reminder** time, and status actions (**Pause**/**Resume**, **Archive** or **Delete**) with a plain explanation of each.
 
 - Changes apply **from today**. Every day keeps its own record of which goals were required and what they were called, so renaming, pausing or removing a goal never changes past days or their stats, and a new goal never counts against days before it existed.
 - Removing a goal that has history **archives** it: it leaves today's list but stays in history and Stats, and can be restored. A goal with no history yet (for example a typo added today) is deleted outright.
-- Up to 20 active goals.
+- Up to 20 active goals (the planned Free plan allows 5; see Plans).
+
+### Reminders
+
+Set a reminder time on a goal, and after that time Day by Day shows one reminder a day for goals that aren't done: inside the app, and as a system notification if you allow notifications in **Settings → Notifications**. Browsers only run web apps while they're open (in a tab or installed), so reminders can't arrive once the app is fully closed. Settings says this plainly. Turning off **Show reminders** stops them on that device.
+
+## Plans
+
+`js/plans.js` defines the Free and Pro plans and answers every "can this user use X?" question (`can(feature)`, `limit(name)`):
+
+- **Free:** up to 5 active goals, basic streaks and statistics, 30 days of history.
+- **Pro:** unlimited goals, flexible schedules, reminders, install/quick check-in, daily focus, weekly review and insights, full history, advanced trends, data export, shareable weekly summary.
+
+**Billing is not implemented.** There is no payment provider and nothing takes money. Until billing exists, everyone is on **Early access**, which includes every Pro feature, so nothing you use today is locked. Settings → Subscription shows the plan and the Free/Pro comparison, with no buy or upgrade buttons. To add billing later, have `currentPlan()` return `'free'` or `'pro'` from a verified subscription and keep feature checks going through `can()`/`limit()`.
 
 ## Testing
 
@@ -76,10 +93,13 @@ The tests in `tests/` cover:
 - per-goal stats counted only over the days each goal was required; daily series, calendar grid and day details
 - month and year boundaries, daylight saving changes, and leap years (including skipping Feb 29)
 - malformed saved data (bad JSON, wrong types, impossible dates, broken invariants, blocked storage)
-- migrating older saved data (the old challenge format and the original prototype), and export/import validation
+- migrating older saved data (schema 3, the old challenge format and the original prototype) with identical stats, and export/import validation
+- schedules (weekdays, selected days, times per week), neutral unscheduled days, flexible goals not affecting Locked In, weekly goal stats, drag reordering, daily focus and week start
+- insights and their data minimums: week-over-week change, strongest and weakest weekday, biggest opportunity
+- plan entitlements (Early access grants everything; Free and Pro limits)
 - theme preference handling (fallback to Auto, blocked storage)
 - sync decisions: first-sign-in upload, fresh-device download, live changes, conflicts, stale devices, unreadable account data
-- every CSS/JS link in `index.html` carrying the same cache-busting version
+- every CSS/JS link in `index.html` carrying the same cache-busting version, and the service worker caching that same version
 
 ## Sign-in and sync
 
@@ -126,21 +146,31 @@ If you are not signed in, everything lives in this browser only. Clearing site d
 
 ### Saved-data format and migrations
 
-Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaVersion` field. The current version is **3**:
+Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaVersion` field. The current version is **4**:
 
 ```js
 {
-  schemaVersion: 3,
-  habits: [{ id: 'h1', name: 'Workout', createdOn: '2026-09-01', status: 'active', archivedOn: null }],
-  //        status: 'active' | 'paused' | 'archived'; array order is display order
+  schemaVersion: 4,
+  habits: [{
+    id: 'h1', name: 'Workout', createdOn: '2026-09-01', status: 'active', archivedOn: null,
+    icon: 'dumbbell',              // Lucide icon name or null
+    color: 'jade',                 // jade | teal | sky | indigo | violet | rose | amber | slate | null
+    schedule: { type: 'daily' },   // | { type: 'weekdays' } | { type: 'days', days: [1, 3, 5] } | { type: 'weekly', times: 3 }
+    reminder: '07:30'              // 'HH:MM' or null
+  }],
   days: {
-    '2026-09-01': { habits: [{ id: 'h1', name: 'Workout' }], done: ['h1'] }
-    // one record per date: the goals required that day, with their names then, and which were done
-  }
+    '2026-09-01': { habits: [{ id: 'h1', name: 'Workout' }, { id: 'h2', name: 'Run', flex: true, target: 3 }], done: ['h1'] }
+    // one record per date: the goals shown that day, with their names then, and which were done.
+    // flex entries (times per week) don't count toward Locked In.
+  },
+  focus: { '2026-09-01': 'Finish the essay draft' },   // optional daily intention
+  settings: { weekStart: 0 }                           // 0 = Sunday, 1 = Monday
 }
 ```
 
 Streaks and all statistics are calculated from `days` (see `js/stats.js`); no counters are stored.
+
+- **Version 3 → 4:** existing goals become "every day" goals with no icon, colour or reminder, and daily records are untouched, so every streak and statistic is exactly the same (a test checks this). The original is first copied to `day-by-day.backup.v3.<timestamp>`. An account still holding version 3 data is converted when it's downloaded and saved back as version 4 on your next change. A device still running an older app version is told to reload.
 
 - **Version 2 → 3** (the old fixed-length challenge format): the challenge's habits become goals. Every day the old app recorded as complete, in any attempt, becomes a fully done record, so old streaks and your best streak carry over. Days the old app knew were missed or failed become days with nothing done (it didn't store partial progress for them), and today's ticks are kept. The original is first copied to `day-by-day.backup.v2.<timestamp>`.
 - Data without a `schemaVersion` is treated as version 1, the unversioned prototype format, and upgraded through version 2. The original is first copied to `day-by-day.backup.v1.<timestamp>`.
@@ -149,27 +179,40 @@ Streaks and all statistics are calculated from `days` (see `js/stats.js`); no co
 
 To change the format: bump `SCHEMA_VERSION` in `js/core.js`, add a step to `MIGRATIONS`, update `validateState`, and add tests.
 
+## Design system
+
+All styles come from tokens at the top of `css/styles.css`:
+- a dark reference theme with a matching light theme: deep neutral background, three layered surfaces, low-opacity borders, and mint/jade accent with restrained warning and danger colours;
+- an 8px spacing scale, a type scale set in Inter, 8/12/16px radii, soft shadows, and motion durations and easing curves.
+
+Components (cards, buttons, inputs, segmented controls, switches, dialogs and sheets) use only those tokens.
+
 ## Accessibility
 
-- A visible focus ring (3px, high-contrast blue) on every interactive element, plus a "Skip to main content" link.
-- Every control has a real label. Goal checkboxes are native inputs inside `<label>`s (styled, but still operable with Space), and the progress bar has ARIA values.
-- Today and Stats are an ARIA tab list (arrow keys switch tabs). Calendar days are buttons labelled with the date and how it went; future days aren't focusable. Locked In days also show a ✓, so the calendar never relies on colour alone.
-- Charts: the daily chart is keyboard-readable (focus it and use ←/→ for each day's tooltip) and has a **Show daily data** table; the consistency chart prints each value next to its bar.
-- Screen-reader announcements go through a polite live region (goal ticked, Locked In, goal changes, import results). Errors use `role="alert"`.
-- **Edit goals** and confirmations use the native modal `<dialog>`: focus is trapped, Escape closes, and focus returns to the button that opened it. Confirmations start on **Cancel**.
-- Colour pairs meet WCAG 2.1 AA in both themes.
-  - Light: body text 14.9:1 or higher, muted text 6.4:1, white on green buttons 6.5:1, red danger text 7.3:1, focus ring 6:1, control borders 4.1:1.
-  - Dark: body text 13.9:1 or higher, muted text 7.3:1, dark text on green buttons 8.7:1, danger text 7.5:1, focus ring 7.9:1, control borders 4.5:1.
-  - Calendar day numbers: at least 6.3:1 on every day state in both themes.
-- The theme switch is a labelled radio group, so arrow keys change the theme.
-- The layout works from 320px wide up to desktop. Animations (tick pop, Locked In glow) are subtle and switched off when `prefers-reduced-motion` is set. Windows high-contrast mode keeps ticks, bars and Locked In days visible.
+- A visible 2px focus ring on every interactive element, plus a "Skip to main content" link.
+- Every form field has a visible label. Goal checkboxes are native inputs inside `<label>`s (styled, but operable with Space), and progress bars and the ring have ARIA values.
+- Sections are an ARIA tab list: ↑/↓ in the sidebar, ←/→ in the bottom bar. Each panel starts with a real `<h1>`.
+- Every icon is decorative and hidden from screen readers. Icon-only buttons (month arrows, drag handles, close buttons, icon and colour choices) have an accessible name and a matching tooltip on hover or keyboard focus.
+- Reordering works with the keyboard: focus a goal's handle and press ↑/↓ (or Home/End). Each move is announced.
+- Calendar days are buttons labelled with the date and how it went; future days aren't focusable. Locked In days also show a check, so the calendar never relies on colour alone. Day details open beside the calendar on wide screens, and in a bottom sheet on phones.
+- Charts: the daily chart is keyboard-readable (focus it and use ←/→) and has a **Show data table**. The weekday and consistency charts print every value.
+- Screen-reader announcements go through a polite live region (goal done, day locked in, goal changes, moves, import results); errors use `role="alert"`.
+- All dialogs (Edit goals, the goal form, day details, confirmations) are native modal `<dialog>`s: focus is trapped, Escape closes, and focus returns to what opened them. Destructive confirmations start on **Cancel**.
+- Colour pairs meet WCAG 2.1 AA in both themes: text 4.5:1 or better on every surface, and 3:1 or better for focus rings, control borders, the progress ring and goal icons (checked with a script).
+- Works from 320px wide, at 200% zoom and up to wide desktops without horizontal scrolling, and the fixed navigation never covers content. Animations are short and subtle, and are switched off with `prefers-reduced-motion`. Windows high-contrast mode keeps ticks, bars and Locked In days visible.
 
 ## Project structure
 
 ```
-index.html          Markup: Today and Stats tabs, Edit goals sheet, confirmation dialog
-icon.svg            Favicon
-css/styles.css      All styles; light and dark colour tokens at the top
+index.html          Markup: navigation, Today / Stats / Settings, goal editor, goal form,
+                    day details sheet, confirmation dialog
+icon.svg            App icon (favicon and install icon)
+manifest.webmanifest  Install metadata and the "Check in today" shortcut
+sw.js               Service worker: caches the app for offline use
+fonts/              Inter (variable, Latin) and its licence
+css/styles.css      All styles; design tokens (light and dark) at the top
+js/icons.js         Bundled Lucide icons (ISC licence) and a tiny helper
+js/plans.js         Free / Pro plan definitions and feature entitlements
 js/theme.js         Auto/Light/Dark preference, applied before first paint
 js/sync.js          Pure sync decisions: upload / download / conflicts
 js/cloud.js         Firebase adapter: Google sign-in, users/{uid} document
@@ -186,4 +229,4 @@ tests/              node:test suites and helpers (a fake localStorage)
 package.json        npm scripts only; there are no dependencies
 ```
 
-`core.js`, `stats.js`, `storage.js`, `sync.js` and `theme.js` are plain scripts. In the browser they attach `DayByDayCore`, `DayByDayStats`, `DayByDayStorage`, `DayByDaySync` and `DayByDayTheme` to `window`, and in Node they export via `module.exports`. That is why the app works from `file://` without a bundler, and why the tests can `require()` the same files.
+`core.js`, `stats.js`, `plans.js`, `storage.js`, `sync.js` and `theme.js` are plain scripts. In the browser they attach `DayByDayCore`, `DayByDayStats`, `DayByDayPlans`, `DayByDayStorage`, `DayByDaySync` and `DayByDayTheme` to `window`, and in Node they export via `module.exports`. That is why the app works from `file://` without a bundler, and why the tests can `require()` the same files.

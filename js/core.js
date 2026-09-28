@@ -24,7 +24,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  var SCHEMA_VERSION = 3;
+  var SCHEMA_VERSION = 4;
   var APP_ID = 'day-by-day';
   var DAY_MS = 24 * 60 * 60 * 1000;
   var MIN_YEAR = 1970;
@@ -35,6 +35,10 @@
   var MAX_DAYS = 36600;          // about 100 years of records
   var MAX_FILL_DAYS = 3660;      // never back-fill more than ~10 years at once
   var HABIT_STATUSES = ['active', 'paused', 'archived'];
+  var GOAL_COLORS = ['jade', 'teal', 'sky', 'indigo', 'violet', 'rose', 'amber', 'slate'];
+  var MAX_FOCUS_LENGTH = 140;
+  var TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+  var ICON_RE = /^[a-z0-9-]{1,32}$/;
   var DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
   // Limits of the old (schema 1–2) challenge format, used only by migrations.
@@ -105,18 +109,67 @@
   /* ------------------------------------------------------------------ */
 
   /*
-   * State (schema 3)
-   *   habits: [{ id, name, createdOn, status, archivedOn }]
+   * State (schema 4)
+   *   habits: [{ id, name, createdOn, status, archivedOn, icon, color, schedule, reminder }]
    *     status is 'active', 'paused' or 'archived'; array order is display order.
-   *   days: { 'YYYY-MM-DD': { habits: [{ id, name }], done: [id] } }
-   *     One record per calendar date: a snapshot of the habits that were
-   *     required that day (with their names at the time) and which were done.
-   *     Past records are never rewritten when habits change later. Only
-   *     today's record follows the current habit list.
+   *     icon: a Lucide icon name or null; color: one of GOAL_COLORS or null.
+   *     schedule: { type: 'daily' } | { type: 'weekdays' }
+   *             | { type: 'days', days: [0-6, Sunday = 0] } | { type: 'weekly', times: 1-6 }
+   *     reminder: 'HH:MM' or null.
+   *   days: { 'YYYY-MM-DD': { habits: [{ id, name, flex?, target? }], done: [id] } }
+   *     One record per calendar date: a snapshot of the goals shown that day
+   *     (with their names at the time) and which were done. Goals with
+   *     flex: true and target: N (N times a week) can be ticked but are not
+   *     required, so they don't decide whether the day is Locked In.
+   *     Past records are never rewritten when goals change later. Only
+   *     today's record follows the current goal list.
+   *   focus: { 'YYYY-MM-DD': 'text' }  optional daily intention
+   *   settings: { weekStart: 0 | 1 }   Sunday or Monday
    */
 
+  var DAILY = { type: 'daily' };
+
   function emptyState() {
-    return { schemaVersion: SCHEMA_VERSION, habits: [], days: {} };
+    return { schemaVersion: SCHEMA_VERSION, habits: [], days: {}, focus: {}, settings: { weekStart: 0 } };
+  }
+
+  /** Day of week for a date key (0 = Sunday). */
+  function dayOfWeek(key) {
+    return new Date(keyToUTC(key)).getUTCDay();
+  }
+
+  /**
+   * How a goal appears on `date`: 'required', 'flex' (times-per-week goals,
+   * which are available every day) or null (not scheduled that day).
+   */
+  function scheduleOn(habit, date) {
+    var sch = habit.schedule || DAILY;
+    if (sch.type === 'weekly') return 'flex';
+    if (sch.type === 'daily') return 'required';
+    var dow = dayOfWeek(date);
+    if (sch.type === 'weekdays') return dow >= 1 && dow <= 5 ? 'required' : null;
+    if (sch.type === 'days') return sch.days.indexOf(dow) >= 0 ? 'required' : null;
+    return 'required';
+  }
+
+  /** Normalise and validate a schedule. Returns { schedule } or { error }. */
+  function cleanSchedule(input) {
+    var sch = input || DAILY;
+    if (sch.type === 'daily' || sch.type === 'weekdays') return { schedule: { type: sch.type } };
+    if (sch.type === 'days') {
+      var days = Array.isArray(sch.days) ? sch.days.filter(function (d, i, a) {
+        return Number.isInteger(d) && d >= 0 && d <= 6 && a.indexOf(d) === i;
+      }).sort() : [];
+      if (!days.length) return { error: 'Choose at least one day for this goal.' };
+      if (days.length === 7) return { schedule: { type: 'daily' } };
+      return { schedule: { type: 'days', days: days } };
+    }
+    if (sch.type === 'weekly') {
+      var times = Number(sch.times);
+      if (!Number.isInteger(times) || times < 1 || times > 6) return { error: 'Choose between 1 and 6 times a week.' };
+      return { schedule: { type: 'weekly', times: times } };
+    }
+    return { error: 'Choose how often this goal repeats.' };
   }
 
   function clone(value) {
@@ -167,10 +220,20 @@
     return Object.keys(state.days).sort();
   }
 
-  /** Totals for one daily record. */
+  /**
+   * Totals for one daily record. Only required goals count toward the
+   * day's total and Locked In; flexible (times-per-week) goals don't.
+   */
   function recordSummary(record) {
-    var total = record ? record.habits.length : 0;
-    var completed = record ? record.done.length : 0;
+    var total = 0;
+    var completed = 0;
+    if (record) {
+      record.habits.forEach(function (h) {
+        if (h.flex) return;
+        total++;
+        if (record.done.indexOf(h.id) >= 0) completed++;
+      });
+    }
     return {
       total: total,
       completed: completed,
@@ -183,8 +246,15 @@
   /* Daily records                                                       */
   /* ------------------------------------------------------------------ */
 
-  function snapshotActive(state) {
-    return activeHabits(state).map(function (h) { return { id: h.id, name: h.name }; });
+  /** The goals shown on `date`, from the current active list and schedules. */
+  function snapshotFor(state, date) {
+    var out = [];
+    activeHabits(state).forEach(function (h) {
+      var how = scheduleOn(h, date);
+      if (!how) return;
+      out.push(how === 'flex' ? { id: h.id, name: h.name, flex: true, target: h.schedule.times } : { id: h.id, name: h.name });
+    });
+    return out;
   }
 
   /**
@@ -194,7 +264,7 @@
    * Only ever touches today's record.
    */
   function syncTodayRecord(next, today) {
-    var snap = snapshotActive(next);
+    var snap = snapshotFor(next, today);
     var rec = next.days[today];
     if (!rec) {
       if (!snap.length) return next;
@@ -202,7 +272,7 @@
       return next;
     }
     if (!snap.length) {
-      // Nothing is required today any more: a neutral day, not a record.
+      // Nothing is scheduled today any more: a neutral day, not a record.
       delete next.days[today];
       return next;
     }
@@ -214,32 +284,34 @@
 
   /**
    * Bring the history up to `today`. Days since the last record, when the
-   * app wasn't opened, get records with nothing done, using the habits
-   * active now (habits can only change while the app is open, so these are
-   * the habits that were required on those days). Also creates today's
-   * record. Returns { state, missed: [dates] }.
+   * app wasn't opened, get records with nothing done, using the goals
+   * active now and their schedules (goals can only change while the app is
+   * open, so these are the goals that were due on those days). Also creates
+   * today's record. Returns { state, changed, missed: [dates with required goals] }.
    */
   function ensureDays(state, today) {
     if (!isValidDateKey(today)) throw new RangeError('Invalid date: ' + String(today));
     var dates = sortedDates(state);
     var last = dates.length ? dates[dates.length - 1] : null;
-    var snap = snapshotActive(state);
     var missed = [];
     var next = null;
-    if (snap.length && last && last < today) {
+    if (activeHabits(state).length && last && last < today) {
       var gap = daysBetween(last, today) - 1;
       if (gap > MAX_FILL_DAYS) gap = MAX_FILL_DAYS;
       var start = addDays(today, -gap);
       for (var i = 0; i < gap; i++) {
         var d = addDays(start, i);
+        var snap = snapshotFor(state, d);
+        if (!snap.length) continue;
         if (!next) next = clone(state);
-        next.days[d] = { habits: clone(snap), done: [] };
-        missed.push(d);
+        next.days[d] = { habits: snap, done: [] };
+        if (snap.some(function (h) { return !h.flex; })) missed.push(d);
       }
     }
-    if (snap.length && !state.days[today]) {
+    var todaySnap = snapshotFor(state, today);
+    if (todaySnap.length && !state.days[today]) {
       if (!next) next = clone(state);
-      next.days[today] = { habits: clone(snap), done: [] };
+      next.days[today] = { habits: todaySnap, done: [] };
     }
     return { state: next || state, changed: !!next, missed: missed };
   }
@@ -263,9 +335,38 @@
   /* Managing habits                                                     */
   /* ------------------------------------------------------------------ */
 
-  function addHabit(state, name, today) {
+  /**
+   * Validate optional goal details (icon, color, schedule, reminder).
+   * Returns { details } with cleaned values for the keys present, or { error }.
+   */
+  function cleanDetails(opts) {
+    var out = {};
+    if (!opts) return { details: out };
+    if (opts.icon !== undefined) {
+      if (opts.icon !== null && !ICON_RE.test(opts.icon)) return { error: 'That icon isn’t available.' };
+      out.icon = opts.icon;
+    }
+    if (opts.color !== undefined) {
+      if (opts.color !== null && GOAL_COLORS.indexOf(opts.color) < 0) return { error: 'That colour isn’t available.' };
+      out.color = opts.color;
+    }
+    if (opts.schedule !== undefined) {
+      var sch = cleanSchedule(opts.schedule);
+      if (sch.error) return { error: sch.error };
+      out.schedule = sch.schedule;
+    }
+    if (opts.reminder !== undefined) {
+      if (opts.reminder !== null && opts.reminder !== '' && !TIME_RE.test(opts.reminder)) return { error: 'Enter a reminder time like 08:30.' };
+      out.reminder = opts.reminder || null;
+    }
+    return { details: out };
+  }
+
+  function addHabit(state, name, today, opts) {
     var error = habitNameError(name);
     if (error) return failure(state, 'invalid-name', error);
+    var details = cleanDetails(opts);
+    if (details.error) return failure(state, 'invalid-details', details.error);
     if (activeHabits(state).length >= MAX_ACTIVE_HABITS) {
       return failure(state, 'too-many', 'You can have up to ' + MAX_ACTIVE_HABITS + ' active goals.');
     }
@@ -274,17 +375,74 @@
     }
     var next = clone(state);
     var id = nextHabitId(next);
-    next.habits.push({ id: id, name: cleanName(name), createdOn: today, status: 'active', archivedOn: null });
+    var habit = { id: id, name: cleanName(name), createdOn: today, status: 'active', archivedOn: null,
+      icon: null, color: null, schedule: { type: 'daily' }, reminder: null };
+    Object.keys(details.details).forEach(function (k) { habit[k] = details.details[k]; });
+    next.habits.push(habit);
     return result(syncTodayRecord(next, today), { id: id });
   }
 
-  function renameHabit(state, id, name, today) {
-    var error = habitNameError(name);
-    if (error) return failure(state, 'invalid-name', error);
+  /**
+   * Change a goal's name and/or details ({ name, icon, color, schedule,
+   * reminder }). Like every goal change, it applies from today: past
+   * records keep the name and schedule they had.
+   */
+  function updateHabit(state, id, changes, today) {
     if (!findHabit(state, id)) return failure(state, 'unknown-habit', 'That goal no longer exists.');
+    var c = changes || {};
+    if (c.name !== undefined) {
+      var error = habitNameError(c.name);
+      if (error) return failure(state, 'invalid-name', error);
+    }
+    var details = cleanDetails(c);
+    if (details.error) return failure(state, 'invalid-details', details.error);
     var next = clone(state);
-    findHabit(next, id).name = cleanName(name);
+    var h = findHabit(next, id);
+    if (c.name !== undefined) h.name = cleanName(c.name);
+    Object.keys(details.details).forEach(function (k) { h[k] = details.details[k]; });
     return result(syncTodayRecord(next, today), {});
+  }
+
+  /** Move a goal to position `toIndex` within its status group (drag and drop). */
+  function reorderHabit(state, id, toIndex, today) {
+    var habit = findHabit(state, id);
+    if (!habit) return failure(state, 'unknown-habit', 'That goal no longer exists.');
+    var group = state.habits.filter(function (h) { return h.status === habit.status; });
+    var from = group.indexOf(habit);
+    var to = Math.max(0, Math.min(group.length - 1, Math.round(Number(toIndex))));
+    if (!Number.isFinite(to)) return failure(state, 'invalid-index', 'Invalid position.');
+    if (to === from) return result(state, { unchanged: true });
+    var next = clone(state);
+    var ids = group.map(function (h) { return h.id; });
+    ids.splice(from, 1);
+    ids.splice(to, 0, id);
+    // Rebuild the full list: the group's slots, in the new order.
+    var byId = {};
+    next.habits.forEach(function (h) { byId[h.id] = h; });
+    var k = 0;
+    next.habits = next.habits.map(function (h) { return h.status === habit.status ? byId[ids[k++]] : h; });
+    return result(syncTodayRecord(next, today), {});
+  }
+
+  /** Set (or clear, with '') today's focus. */
+  function setFocus(state, text, today) {
+    var t = typeof text === 'string' ? text.replace(/\s+/g, ' ').trim() : '';
+    if (t.length > MAX_FOCUS_LENGTH) return failure(state, 'too-long', 'Keep your focus to ' + MAX_FOCUS_LENGTH + ' characters or fewer.');
+    var next = clone(state);
+    if (t) next.focus[today] = t;
+    else delete next.focus[today];
+    return result(next, {});
+  }
+
+  function setWeekStart(state, weekStart) {
+    if (weekStart !== 0 && weekStart !== 1) return failure(state, 'invalid', 'The week can start on Sunday or Monday.');
+    var next = clone(state);
+    next.settings.weekStart = weekStart;
+    return result(next, {});
+  }
+
+  function renameHabit(state, id, name, today) {
+    return updateHabit(state, id, { name: name }, today);
   }
 
   /** Move a habit up (-1) or down (+1) past its neighbour in the same group. */
@@ -391,6 +549,11 @@
         if (h.status === 'archived' ? !isValidDateKey(h.archivedOn) : h.archivedOn !== null) {
           err(label + '.archivedOn does not match its status.');
         }
+        if (h.icon !== null && !(typeof h.icon === 'string' && ICON_RE.test(h.icon))) err(label + '.icon is invalid.');
+        if (h.color !== null && GOAL_COLORS.indexOf(h.color) < 0) err(label + '.color is invalid.');
+        var sch = isPlainObject(h.schedule) ? cleanSchedule(h.schedule) : { error: true };
+        if (sch.error || JSON.stringify(sch.schedule) !== JSON.stringify(h.schedule)) err(label + '.schedule is invalid.');
+        if (h.reminder !== null && !(typeof h.reminder === 'string' && TIME_RE.test(h.reminder))) err(label + '.reminder is invalid.');
       });
       if (active > MAX_ACTIVE_HABITS) err('Too many active habits.');
     }
@@ -409,7 +572,11 @@
       if (rec.habits.length > MAX_ACTIVE_HABITS) err(label + ' has too many habits.');
       var recIds = [];
       rec.habits.forEach(function (h) {
-        if (!isPlainObject(h) || typeof h.id !== 'string' || !validName(h.name)) { err(label + ' has an invalid habit.'); return; }
+        var badFlex = h.flex !== undefined && (h.flex !== true || !Number.isInteger(h.target) || h.target < 1 || h.target > 6);
+        if (!isPlainObject(h) || typeof h.id !== 'string' || !validName(h.name) || badFlex || (h.flex === undefined && h.target !== undefined)) {
+          err(label + ' has an invalid habit.');
+          return;
+        }
         if (recIds.indexOf(h.id) >= 0) err(label + ' lists a habit twice.');
         if (ids.indexOf(h.id) < 0) err(label + ' refers to an unknown habit.');
         recIds.push(h.id);
@@ -420,6 +587,16 @@
         seen.push(id);
       });
     });
+
+    if (!isPlainObject(s.focus)) {
+      err('focus must be an object keyed by date.');
+    } else {
+      Object.keys(s.focus).forEach(function (d) {
+        var t = s.focus[d];
+        if (!isValidDateKey(d) || typeof t !== 'string' || !t.trim() || t.length > MAX_FOCUS_LENGTH) err('focus[' + d + '] is invalid.');
+      });
+    }
+    if (!isPlainObject(s.settings) || (s.settings.weekStart !== 0 && s.settings.weekStart !== 1)) err('settings.weekStart must be 0 or 1.');
     return errors;
   }
 
@@ -523,7 +700,11 @@
    *         current: { number, startDate, status, completedDates, checked },
    *         attempts: [{ number, startDate, endDate, daysCompleted, reason,
    *                      endedOn, missedDate? }], bestStreak }
-   *   3 — Ongoing habits with one record per day (see emptyState).
+   *   3 — Ongoing habits with one record per day: { habits, days }.
+   *   4 — Adds goal icon, colour, schedule and reminder, flexible goals in
+   *       daily records, daily focus and settings (see emptyState). Existing
+   *       goals become "every day" goals, so every record and statistic is
+   *       unchanged.
    *
    * To add version N+1: bump SCHEMA_VERSION and add MIGRATIONS[N].
    */
@@ -597,7 +778,7 @@
     2: function v2ToV3(old) {
       var problems = validateV2(old);
       if (problems.length) throw new Error(problems.slice(0, 3).join(' '));
-      var state = emptyState();
+      var state = { schemaVersion: 3, habits: [], days: {} };
       if (!old.challenge) return state;
       var c = old.challenge;
       state.habits = c.habits.map(function (h) {
@@ -632,6 +813,26 @@
         state.days[d] = { habits: clone(snap), done: done };
       }
       return state;
+    },
+
+    3: function v3ToV4(old) {
+      if (!isPlainObject(old)) throw new Error('Saved data is not an object.');
+      if (!Array.isArray(old.habits)) throw new Error('habits must be a list.');
+      return {
+        schemaVersion: 4,
+        habits: old.habits.map(function (h) {
+          if (!isPlainObject(h)) return h;
+          var out = clone(h);
+          out.icon = null;
+          out.color = null;
+          out.schedule = { type: 'daily' };
+          out.reminder = null;
+          return out;
+        }),
+        days: old.days,
+        focus: {},
+        settings: { weekStart: 0 }
+      };
     }
   };
 
@@ -667,7 +868,7 @@
       return { ok: false, error: 'invalid', message: 'The data could not be upgraded: ' + e.message };
     }
     // Keep only the stored fields; exports also carry computed ones.
-    var state = { schemaVersion: data.schemaVersion, habits: data.habits, days: data.days };
+    var state = { schemaVersion: data.schemaVersion, habits: data.habits, days: data.days, focus: data.focus, settings: data.settings };
     var errors = validateState(state);
     if (errors.length) {
       return { ok: false, error: 'invalid', message: 'The data is damaged or incomplete: ' + errors.slice(0, 3).join(' '), errors: errors };
@@ -690,7 +891,11 @@
       var s = recordSummary(rec);
       return {
         date: d,
-        habits: rec.habits.map(function (h) { return { id: h.id, name: h.name, done: rec.done.indexOf(h.id) >= 0 }; }),
+        habits: rec.habits.map(function (h) {
+          var item = { id: h.id, name: h.name, done: rec.done.indexOf(h.id) >= 0 };
+          if (h.flex) item.flexible = true;
+          return item;
+        }),
         totalCompleted: s.completed,
         totalPossible: s.total,
         percentage: s.percentage,
@@ -703,6 +908,8 @@
       exportedAt: (now || new Date()).toISOString(),
       habits: clone(state.habits),
       days: clone(state.days),
+      focus: clone(state.focus),
+      settings: clone(state.settings),
       dailyRecords: dailyRecords
     };
     if (summary) doc.stats = summary;
@@ -739,6 +946,8 @@
     SCHEMA_VERSION: SCHEMA_VERSION,
     APP_ID: APP_ID,
     MAX_ACTIVE_HABITS: MAX_ACTIVE_HABITS,
+    MAX_FOCUS_LENGTH: MAX_FOCUS_LENGTH,
+    GOAL_COLORS: GOAL_COLORS,
     // dates
     isLeapYear: isLeapYear,
     daysInMonth: daysInMonth,
@@ -746,6 +955,7 @@
     toDateKey: toDateKey,
     addDays: addDays,
     daysBetween: daysBetween,
+    dayOfWeek: dayOfWeek,
     // state
     emptyState: emptyState,
     cleanName: cleanName,
@@ -757,7 +967,13 @@
     ensureDays: ensureDays,
     setHabitDone: setHabitDone,
     addHabit: addHabit,
+    updateHabit: updateHabit,
     renameHabit: renameHabit,
+    reorderHabit: reorderHabit,
+    setFocus: setFocus,
+    setWeekStart: setWeekStart,
+    scheduleOn: scheduleOn,
+    cleanSchedule: cleanSchedule,
     moveHabit: moveHabit,
     setHabitStatus: setHabitStatus,
     habitHistoryDates: habitHistoryDates,
