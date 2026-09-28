@@ -8,11 +8,20 @@
   <title>Day by Day</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="css/styles.css">
+  <script src="js/theme.js"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
 
   <header class="app-header">
+    <div class="header-bar">
+      <fieldset class="theme-switch">
+        <legend class="visually-hidden">Theme</legend>
+        <label><input type="radio" name="theme" value="auto" checked><span>Auto</span></label>
+        <label><input type="radio" name="theme" value="light"><span>Light</span></label>
+        <label><input type="radio" name="theme" value="dark"><span>Dark</span></label>
+      </fieldset>
+    </div>
     <h1 class="brand">Day by Day</h1>
     <p class="tagline">Every habit. Every day. No skipped days.</p>
   </header>

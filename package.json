@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node scripts/serve.js",
     "test": "node --test tests/*.test.js",
-    "check": "node --check js/core.js && node --check js/storage.js && node --check js/app.js && node --check scripts/serve.js",
+    "check": "node --check js/core.js && node --check js/storage.js && node --check js/app.js && node --check js/theme.js && node --check scripts/serve.js",
     "validate": "npm run check && npm test"
   },
   "engines": {

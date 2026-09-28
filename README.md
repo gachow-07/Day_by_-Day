@@ -6,6 +6,7 @@ Create a challenge with a list of daily habits. **Every habit must be completed 
 
 - Plain HTML, CSS and JavaScript. No framework, no build step, no runtime dependencies.
 - Works offline. Data is stored only in your browser's `localStorage`.
+- Light and dark themes. **Auto** follows your device setting; **Light** or **Dark** overrides it. The choice is saved per device and is not part of exported data.
 - No accounts, analytics, payments or cloud sync.
 
 ## Running the app
@@ -56,6 +57,7 @@ The tests in `tests/` cover:
 - month and year boundaries, daylight saving changes, and leap years (including skipping Feb 29)
 - malformed saved data (bad JSON, wrong types, impossible dates, broken invariants, blocked storage)
 - migrating older saved data, and export/import validation
+- theme preference handling (fallback to Auto, blocked storage)
 
 ## Backing up your data
 
@@ -83,7 +85,10 @@ To change the format: bump `SCHEMA_VERSION` in `js/core.js`, add a step to `MIGR
 - Every control has a real label. Habit checkboxes are native inputs inside `<label>`s, and the progress bar has ARIA values.
 - Screen-reader announcements go through a polite live region (habit checked, day complete, restart, import results). Errors use `role="alert"`.
 - Confirmations use the native modal `<dialog>`. It traps focus, starts on **Cancel**, closes with Escape, and returns focus to the button that opened it.
-- Colour pairs meet WCAG 2.1 AA: body text is 14.9:1 or higher, muted text 6.4:1, white on green buttons 6.5:1, red danger text 7.3:1, the focus ring 6:1, and control borders 4.1:1.
+- Colour pairs meet WCAG 2.1 AA in both themes.
+  - Light: body text 14.9:1 or higher, muted text 6.4:1, white on green buttons 6.5:1, red danger text 7.3:1, focus ring 6:1, control borders 4.1:1.
+  - Dark: body text 13.9:1 or higher, muted text 7.3:1, dark text on green buttons 8.7:1, danger text 7.5:1, focus ring 7.9:1, control borders 4.5:1.
+- The theme switch is a labelled radio group, so arrow keys change the theme.
 - The layout works at 320px width, and motion is reduced when `prefers-reduced-motion` is set.
 
 ## Project structure
@@ -91,7 +96,8 @@ To change the format: bump `SCHEMA_VERSION` in `js/core.js`, add a step to `MIGR
 ```
 index.html          Markup for every view and the confirmation dialog
 icon.svg            Favicon
-css/styles.css      All styles (colour tokens at the top)
+css/styles.css      All styles; light and dark colour tokens at the top
+js/theme.js         Auto/Light/Dark preference, applied before first paint
 js/core.js          Pure logic: dates, streaks, completion, restarts,
                     validation, migrations, import/export (no DOM, no storage)
 js/storage.js       localStorage load/save, migration on load, corrupt-data backup
@@ -101,4 +107,4 @@ tests/              node:test suites and helpers (a fake localStorage)
 package.json        npm scripts only; there are no dependencies
 ```
 
-`core.js` and `storage.js` are plain scripts. In the browser they attach `DayByDayCore` and `DayByDayStorage` to `window`, and in Node they export via `module.exports`. That is why the app works from `file://` without a bundler, and why the tests can `require()` the same files.
+`core.js`, `storage.js` and `theme.js` are plain scripts. In the browser they attach `DayByDayCore`, `DayByDayStorage` and `DayByDayTheme` to `window`, and in Node they export via `module.exports`. That is why the app works from `file://` without a bundler, and why the tests can `require()` the same files.
