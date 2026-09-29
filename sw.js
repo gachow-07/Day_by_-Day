@@ -11,7 +11,7 @@
  */
 'use strict';
 
-var VERSION = '13';
+var VERSION = '14';
 var CACHE = 'day-by-day-v' + VERSION;
 var ASSETS = [
   './',
@@ -27,7 +27,7 @@ var ASSETS = [
   'js/firebase-config.js?v=' + VERSION,
   'js/cloud.js?v=' + VERSION,
   'js/app.js?v=' + VERSION,
-  'fonts/inter-latin-var.woff2',
+  'fonts/instrument-sans-latin-var.woff2',
   'icon.svg',
   'manifest.webmanifest'
 ];

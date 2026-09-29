@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="Day by Day turns a tiny daily check-in into a clear weekly plan for becoming more consistent.">
-  <meta name="theme-color" content="#0e1113">
+  <meta name="theme-color" content="#161512">
   <title>Day by Day</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="preload" href="fonts/inter-latin-var.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/styles.css?v=13">
-  <script src="js/theme.js?v=13"></script>
+  <link rel="preload" href="fonts/instrument-sans-latin-var.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="css/styles.css?v=14">
+  <script src="js/theme.js?v=14"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -18,10 +18,10 @@
   <!-- Wordmark bar: phones only (the sidebar carries it on larger screens) -->
   <header class="topbar">
     <span class="wordmark">
-      <svg class="wordmark-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-        <rect x="1" y="1" width="30" height="30" rx="9" class="mark-bg"/>
-        <path d="M22.5 11.8a8 8 0 1 1-4.3-3.6" class="mark-ring"/>
-        <path d="m11.5 16.2 3.3 3.3 7-7.6" class="mark-check"/>
+      <svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+        <rect x="2" y="21" width="9" height="9" rx="2.25" class="mark-t1"/>
+        <rect x="11.5" y="11.5" width="9" height="9" rx="2.25" class="mark-t2"/>
+        <rect x="21" y="2" width="9" height="9" rx="2.25" class="mark-t3"/>
       </svg>
       <span class="wordmark-text">Day by Day</span>
     </span>
@@ -29,10 +29,10 @@
 
   <nav class="appnav" aria-label="Main">
     <span class="wordmark appnav-brand">
-      <svg class="wordmark-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-        <rect x="1" y="1" width="30" height="30" rx="9" class="mark-bg"/>
-        <path d="M22.5 11.8a8 8 0 1 1-4.3-3.6" class="mark-ring"/>
-        <path d="m11.5 16.2 3.3 3.3 7-7.6" class="mark-check"/>
+      <svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+        <rect x="2" y="21" width="9" height="9" rx="2.25" class="mark-t1"/>
+        <rect x="11.5" y="11.5" width="9" height="9" rx="2.25" class="mark-t2"/>
+        <rect x="21" y="2" width="9" height="9" rx="2.25" class="mark-t3"/>
       </svg>
       <span class="wordmark-text">Day by Day</span>
     </span>
@@ -47,12 +47,11 @@
         <span class="tab-icon" data-icon="settings"></span><span class="tab-label">Settings</span>
       </button>
     </div>
-    <p class="appnav-promise"><span data-icon="shield-check" data-icon-size="16"></span>No ads, no tracking</p>
+    <p class="appnav-promise">No ads, no tracking</p>
   </nav>
 
   <main id="main" tabindex="-1">
     <div id="notice" class="notice" role="alert" hidden>
-      <span class="notice-icon" data-icon="info"></span>
       <p id="notice-text"></p>
       <div class="notice-actions">
         <button type="button" id="notice-action" class="btn btn-secondary btn-sm" hidden></button>
@@ -71,69 +70,64 @@
         <p id="today-date" class="page-sub"></p>
       </header>
 
-      <section id="onboarding" class="card onboarding" aria-labelledby="onboarding-title" hidden>
-        <span class="onboarding-mark" data-icon="target" data-icon-size="28"></span>
-        <h2 id="onboarding-title" class="card-title-lg">What does being Locked In look like for you?</h2>
-        <p class="lead">Add the small things you want to do every day. Check them off each day. When all of them are done, the day is <strong>Locked In</strong>, and a quick daily check-in becomes a clear weekly picture of how consistent you are.</p>
+      <section id="onboarding" class="onboarding" aria-labelledby="onboarding-title" hidden>
+        <div class="onboarding-tiles" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span class="is-today"></span></div>
+        <h2 id="onboarding-title" class="display-title">What does a locked-in day look like?</h2>
+        <p class="lead">Add a few small goals and check them off each day. When every one is done, the day is Locked In.</p>
         <form id="first-goal-form" class="field-row" novalidate>
           <div class="field grow">
             <label for="first-goal" class="label">Your first goal</label>
-            <input id="first-goal" class="input" type="text" maxlength="120" autocomplete="off" placeholder="For example: Walk 20 minutes" aria-describedby="first-goal-error">
+            <input id="first-goal" class="input" type="text" maxlength="120" autocomplete="off" placeholder="Walk 20 minutes" aria-describedby="first-goal-error">
           </div>
-          <button type="submit" class="btn btn-primary"><span data-icon="plus" data-icon-size="18"></span>Add your first goal</button>
+          <button type="submit" class="btn btn-primary">Add goal</button>
         </form>
         <p id="first-goal-error" class="field-error" role="alert" hidden></p>
-        <p class="trust"><span data-icon="shield-check" data-icon-size="16"></span>No ads, no tracking. Your goals stay on your device unless you choose to sign in and sync them.</p>
+        <p class="trust">Stays on your device. No ads, no tracking.</p>
       </section>
 
-      <section id="hero" class="card hero" aria-labelledby="hero-title" hidden>
-        <div class="hero-ring" aria-hidden="true">
-          <svg viewBox="0 0 120 120" class="ring">
-            <circle cx="60" cy="60" r="52" class="ring-track"/>
-            <circle cx="60" cy="60" r="52" class="ring-fill" id="ring-fill"/>
-            <path d="M42 61.5 54 73.5 79 47" class="ring-check" id="ring-check"/>
-          </svg>
-          <span class="ring-count" id="ring-count"></span>
-        </div>
-        <div class="hero-body">
-          <h2 id="hero-title" class="hero-label"><span data-icon="flame" data-icon-size="16"></span>Locked-in streak</h2>
-          <p class="hero-streak"><span id="streak-count">0</span> <span id="streak-unit">days</span></p>
+      <section id="hero" class="hero" aria-labelledby="hero-title" hidden>
+        <div class="hero-streak-block">
+          <h2 id="hero-title" class="visually-hidden">Locked-in streak</h2>
+          <p class="hero-streak"><span id="streak-count" class="num-display">0</span> <span id="streak-unit" class="hero-unit">day streak</span></p>
           <p class="hero-best">Best <span id="best-streak">0 days</span></p>
-          <p id="hero-status" class="hero-status" aria-live="polite"></p>
-          <div class="progress" id="today-progress" role="progressbar" aria-label="Today’s goals" aria-valuemin="0">
-            <div class="progress-bar" id="today-progress-bar"></div>
-          </div>
-          <p class="hero-explain">A day is Locked In when every goal due that day is done.</p>
         </div>
-      </section>
-
-      <section id="focus-card" class="card focus" aria-labelledby="focus-label" hidden>
-        <form id="focus-form" novalidate>
-          <label for="focus-input" id="focus-label" class="label">Today’s focus <span class="optional">Optional</span></label>
-          <div class="field-row">
-            <input id="focus-input" class="input grow" type="text" maxlength="140" autocomplete="off" placeholder="One intention for today" aria-describedby="focus-status">
-            <button type="submit" class="btn btn-secondary">Save</button>
+        <div class="week">
+          <ol id="week-strip" class="week-strip" aria-label="Past six days"></ol>
+          <div class="week-today">
+            <div class="today-tile" id="today-progress" role="progressbar" aria-label="Today’s goals" aria-valuemin="0">
+              <span class="day-tile-fill" id="today-progress-bar"></span>
+              <span class="today-count" id="today-count" aria-hidden="true"></span>
+              <svg class="today-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.5 12.5 10.5 16.5 17.5 8.5"/></svg>
+            </div>
+            <span class="week-label" aria-hidden="true">Today</span>
           </div>
-          <p id="focus-status" class="field-hint" aria-live="polite"></p>
-        </form>
+        </div>
+        <p id="hero-status" class="hero-status" aria-live="polite"></p>
       </section>
 
-      <section id="goals-card" class="card goals" aria-labelledby="goals-title" hidden>
-        <div class="card-head">
-          <h2 id="goals-title" class="card-title">Today’s goals</h2>
-          <button type="button" id="edit-goals" class="btn btn-ghost btn-sm" aria-haspopup="dialog"><span data-icon="pencil" data-icon-size="16"></span>Edit goals</button>
+      <section id="focus-card" class="focus" aria-labelledby="focus-label" hidden>
+        <form id="focus-form" class="focus-form" novalidate>
+          <label for="focus-input" id="focus-label" class="focus-label">Focus</label>
+          <input id="focus-input" class="focus-input" type="text" maxlength="140" autocomplete="off" placeholder="One intention for today" aria-describedby="focus-status">
+          <button type="submit" class="btn btn-ghost btn-sm">Save</button>
+        </form>
+        <p id="focus-status" class="field-hint" aria-live="polite"></p>
+      </section>
+
+      <section id="goals-card" class="goals section" aria-labelledby="goals-title" hidden>
+        <div class="section-head">
+          <h2 id="goals-title" class="section-title">Goals</h2>
+          <button type="button" id="edit-goals" class="btn btn-ghost btn-sm" aria-haspopup="dialog">Edit</button>
         </div>
         <ul id="goal-list" class="goal-list"></ul>
         <div id="flex-section" hidden>
-          <h3 class="subhead">This week</h3>
-          <p class="field-hint">Times-per-week goals. Check them off on any day; they don’t affect whether today is Locked In.</p>
+          <h3 class="subhead">This week <span class="subhead-note">Any day counts</span></h3>
           <ul id="flex-list" class="goal-list"></ul>
         </div>
         <div id="goals-empty" class="empty" hidden>
-          <span data-icon="calendar-days" data-icon-size="22"></span>
           <p id="goals-empty-text"></p>
         </div>
-        <button type="button" id="add-goal" class="btn btn-secondary add-goal"><span data-icon="plus" data-icon-size="18"></span>Add goal</button>
+        <button type="button" id="add-goal" class="btn btn-ghost add-goal"><span data-icon="plus" data-icon-size="18"></span>Add goal</button>
       </section>
     </section>
 
@@ -141,94 +135,90 @@
     <section id="panel-stats" class="panel" role="tabpanel" aria-labelledby="tab-stats" tabindex="-1" hidden>
       <header class="page-head">
         <h1 id="stats-title" class="page-title">Stats</h1>
-        <p class="page-sub">Your consistency, week by week.</p>
       </header>
 
-      <section id="early-card" class="card early" aria-labelledby="early-title" hidden>
-        <span class="early-icon" data-icon="sparkles" data-icon-size="22"></span>
-        <div>
-          <h2 id="early-title" class="card-title"></h2>
-          <p id="early-text" class="muted"></p>
-          <div class="progress progress-sm" id="early-progress" role="progressbar" aria-labelledby="early-title" aria-valuemin="0" aria-valuemax="7">
-            <div class="progress-bar" id="early-progress-bar"></div>
-          </div>
-          <button type="button" id="early-action" class="btn btn-secondary btn-sm">Go to Today</button>
-        </div>
+      <section id="early-card" class="early" aria-labelledby="early-title" hidden>
+        <h2 id="early-title" class="section-title"></h2>
+        <p id="early-text" class="muted"></p>
+        <ol class="early-tiles" id="early-progress" role="progressbar" aria-labelledby="early-title" aria-valuemin="0" aria-valuemax="7"></ol>
+        <button type="button" id="early-action" class="btn btn-ghost btn-sm link-btn">Back to today</button>
       </section>
 
-      <div class="summary-grid" role="list">
-        <div class="stat" role="listitem">
-          <p class="stat-label"><span data-icon="flame" data-icon-size="16"></span>Locked-in streak</p>
-          <p id="stat-current" class="stat-value">0 days</p>
-          <p class="stat-sub">Days in a row with every goal done</p>
-        </div>
-        <div class="stat" role="listitem">
-          <p class="stat-label"><span data-icon="trophy" data-icon-size="16"></span>Best locked-in streak</p>
-          <p id="stat-best" class="stat-value">0 days</p>
-          <p class="stat-sub" id="stat-best-sub">Your longest run so far</p>
-        </div>
-        <div class="stat" role="listitem">
-          <p class="stat-label"><span data-icon="target" data-icon-size="16"></span>Completion rate</p>
-          <p class="stat-value"><span id="stat-rate">0%</span> <span id="stat-trend" class="delta" hidden></span></p>
-          <p class="stat-sub" id="stat-rate-sub">Goals done of goals due</p>
-        </div>
-        <div class="stat" role="listitem">
-          <p class="stat-label"><span data-icon="circle-check" data-icon-size="16"></span>Locked-in days</p>
-          <p id="stat-total" class="stat-value">0</p>
-          <p id="stat-total-sub" class="stat-sub"></p>
-        </div>
-      </div>
+      <section class="stats-hero" aria-labelledby="stat-current-label">
+        <p class="stats-streak"><span id="stat-current" class="num-display">0</span> <span id="stat-current-label" class="hero-unit">day streak</span></p>
+        <dl class="stat-row">
+          <div class="stat-item">
+            <dt data-tip="Your longest run of Locked In days">Best</dt>
+            <dd id="stat-best">0 days</dd>
+          </div>
+          <div class="stat-item">
+            <dt data-tip="Goals done out of goals due, all time">Completion</dt>
+            <dd><span id="stat-rate">—</span> <span id="stat-trend" class="delta" hidden></span></dd>
+          </div>
+          <div class="stat-item">
+            <dt data-tip="Days with every goal done">Locked in</dt>
+            <dd id="stat-total">0</dd>
+          </div>
+          <div class="stat-item">
+            <dt data-tip="Days with at least one goal due">Tracked</dt>
+            <dd id="stat-tracked">0</dd>
+          </div>
+        </dl>
+      </section>
 
-      <section id="insights-card" class="card" aria-labelledby="insights-title" hidden>
-        <div class="card-head">
-          <h2 id="insights-title" class="card-title">This week</h2>
-          <button type="button" id="share-week" class="btn btn-ghost btn-sm"><span data-icon="share-2" data-icon-size="16"></span>Share summary</button>
+      <section id="insights-card" class="insights section" aria-labelledby="insights-title" hidden>
+        <div class="section-head">
+          <h2 id="insights-title" class="section-title">This week</h2>
+          <button type="button" id="share-week" class="btn btn-ghost btn-sm">Share</button>
         </div>
         <ul id="insight-list" class="insight-list"></ul>
       </section>
 
-      <section class="card calendar-card" aria-labelledby="cal-title">
-        <div class="calendar-layout">
+      <section class="calendar section" aria-labelledby="cal-title">
+        <div class="section-head">
+          <h2 id="cal-title" class="section-title" aria-live="polite"></h2>
+          <div class="cal-nav">
+            <button type="button" id="cal-prev" class="icon-btn" aria-label="Previous month" data-tip="Previous month"><span data-icon="chevron-left"></span></button>
+            <button type="button" id="cal-next" class="icon-btn" aria-label="Next month" data-tip="Next month"><span data-icon="chevron-right"></span></button>
+          </div>
+        </div>
+        <div class="calendar-layout" id="calendar-layout">
           <div class="calendar-main">
-            <div class="cal-head">
-              <button type="button" id="cal-prev" class="icon-btn" aria-label="Previous month" data-tip="Previous month"><span data-icon="chevron-left"></span></button>
-              <h2 id="cal-title" class="card-title cal-title" aria-live="polite"></h2>
-              <button type="button" id="cal-next" class="icon-btn" aria-label="Next month" data-tip="Next month"><span data-icon="chevron-right"></span></button>
-            </div>
             <div id="cal-grid" class="cal-grid"></div>
-            <ul class="cal-legend" aria-label="Calendar legend">
+            <ul class="cal-legend" aria-label="Calendar key">
               <li><span class="swatch is-locked" aria-hidden="true"></span>Locked In</li>
               <li><span class="swatch is-partial" aria-hidden="true"></span>Partial</li>
               <li><span class="swatch is-missed" aria-hidden="true"></span>Missed</li>
-              <li><span class="swatch is-none" aria-hidden="true"></span>Not tracked</li>
-              <li><span class="swatch is-today-key" aria-hidden="true"></span>Today</li>
             </ul>
           </div>
-          <aside id="day-panel" class="day-panel" aria-label="Day details">
+          <aside id="day-panel" class="day-panel" aria-labelledby="day-panel-title" hidden>
+            <div class="day-panel-head">
+              <h3 id="day-panel-title" class="visually-hidden">Day details</h3>
+              <button type="button" id="day-panel-close" class="icon-btn" aria-label="Close day details" data-tip="Close"><span data-icon="x"></span></button>
+            </div>
             <div id="day-panel-body"></div>
           </aside>
         </div>
       </section>
 
-      <section id="analytics" class="card" aria-labelledby="analytics-title">
-        <div class="card-head wrap">
-          <h2 id="analytics-title" class="card-title">Daily completion</h2>
-          <fieldset id="range-control" class="segmented">
+      <section id="analytics" class="analytics section" aria-labelledby="analytics-title">
+        <div class="section-head wrap">
+          <h2 id="analytics-title" class="section-title">Daily completion</h2>
+          <fieldset id="range-control" class="range">
             <legend class="visually-hidden">Time range</legend>
-            <label><input type="radio" name="range" value="7"><span>7 days</span></label>
-            <label><input type="radio" name="range" value="30" checked><span>30 days</span></label>
-            <label><input type="radio" name="range" value="90"><span>90 days</span></label>
-            <label><input type="radio" name="range" value="all"><span>All time</span></label>
+            <label><input type="radio" name="range" value="7"><span>7d</span></label>
+            <label><input type="radio" name="range" value="30" checked><span>30d</span></label>
+            <label><input type="radio" name="range" value="90"><span>90d</span></label>
+            <label><input type="radio" name="range" value="all"><span>All</span></label>
           </fieldset>
         </div>
         <p id="chart-daily-caption" class="caption"></p>
         <div id="chart-daily" class="chart"></div>
         <div id="chart-daily-empty" class="empty" hidden>
-          <span data-icon="chart-no-axes-column" data-icon-size="22"></span>
           <p id="chart-daily-empty-text"></p>
         </div>
         <details class="data-table" id="chart-daily-details">
-          <summary>Show data table</summary>
+          <summary>Data table</summary>
           <table>
             <caption class="visually-hidden">Daily completion</caption>
             <thead><tr><th scope="col">Date</th><th scope="col" class="num">Goals</th><th scope="col" class="num">Completion</th></tr></thead>
@@ -236,24 +226,22 @@
           </table>
         </details>
 
-        <h3 class="subhead subhead-gap">By weekday</h3>
+        <h3 class="subhead subhead-gap">By weekday <span class="subhead-note">Last 12 weeks</span></h3>
         <div id="weekday-chart"></div>
       </section>
 
-      <section id="goal-history-card" class="card goal-history" aria-labelledby="goal-history-title">
+      <section id="goal-history-card" class="goal-history section" aria-labelledby="goal-history-title">
         <h2 class="disclosure-heading">
           <button type="button" id="goal-history-toggle" class="disclosure" aria-expanded="false" aria-controls="goal-history-body">
-            <span class="disclosure-text">
-              <span id="goal-history-title" class="card-title">Goal history</span>
-              <span id="goal-history-summary" class="disclosure-summary"></span>
-            </span>
+            <span id="goal-history-title" class="section-title">Goals</span>
+            <span id="goal-history-summary" class="disclosure-summary"></span>
             <span class="disclosure-chevron" data-icon="chevron-down"></span>
           </button>
         </h2>
         <div id="goal-history-body" class="goal-history-body" hidden>
           <div class="gh-legend-row">
             <p class="caption" id="gh-caption"></p>
-            <ul class="gh-legend" aria-label="Goal history legend">
+            <ul class="gh-legend" aria-label="Goal history key">
               <li><span class="gh-cell is-done" aria-hidden="true"></span>Done</li>
               <li><span class="gh-cell is-missed" aria-hidden="true"></span>Missed</li>
               <li><span class="gh-cell is-none" aria-hidden="true"></span>Not due</li>
@@ -261,12 +249,6 @@
           </div>
           <ul id="goal-history-list" class="gh-list"></ul>
         </div>
-      </section>
-
-      <section id="goal-streaks-card" class="card" aria-labelledby="goal-streaks-title">
-        <h2 id="goal-streaks-title" class="card-title">Goal streaks</h2>
-        <p class="caption">Each goal has its own streak: the days (or weeks) in a row that goal was done. Your locked-in streak is different. It needs every goal done, so it can be shorter than any single goal’s streak.</p>
-        <ul id="habit-stats" class="habit-stats"></ul>
       </section>
     </section>
 
@@ -276,12 +258,12 @@
         <h1 id="settings-title" class="page-title">Settings</h1>
       </header>
 
-      <section class="card settings-section" aria-labelledby="appearance-title">
-        <h2 id="appearance-title" class="card-title"><span data-icon="sun" data-icon-size="18"></span>Appearance</h2>
+      <section class="settings-group" aria-labelledby="appearance-title">
+        <h2 id="appearance-title" class="section-title">Appearance</h2>
         <div class="setting-row">
           <div>
             <p class="setting-label" id="theme-label">Theme</p>
-            <p class="setting-help" id="theme-help">Auto follows your device’s light or dark setting. Saved on this device.</p>
+            <p class="setting-help" id="theme-help">Auto matches your device.</p>
           </div>
           <fieldset class="segmented theme-switch" aria-labelledby="theme-label" aria-describedby="theme-help">
             <label><input type="radio" name="theme" value="auto" checked><span>Auto</span></label>
@@ -292,7 +274,6 @@
         <div class="setting-row">
           <div>
             <p class="setting-label" id="weekstart-label">Week starts on</p>
-            <p class="setting-help">Used by the calendar and times-per-week goals.</p>
           </div>
           <fieldset class="segmented" id="weekstart-control" aria-labelledby="weekstart-label">
             <label><input type="radio" name="weekstart" value="0"><span>Sunday</span></label>
@@ -301,17 +282,17 @@
         </div>
       </section>
 
-      <section class="card settings-section" aria-labelledby="notify-title">
-        <h2 id="notify-title" class="card-title"><span data-icon="bell" data-icon-size="18"></span>Notifications</h2>
+      <section class="settings-group" aria-labelledby="notify-title">
+        <h2 id="notify-title" class="section-title">Reminders</h2>
         <div class="setting-row">
           <div>
             <p class="setting-label">Goal reminders</p>
-            <p class="setting-help" id="notify-help">Set a reminder time on any goal in Edit goals. Reminders appear while Day by Day is open in a tab or installed as an app. Browsers can’t deliver them once it’s fully closed.</p>
+            <p class="setting-help" id="notify-help">Set a time on any goal. Reminders show while Day by Day is open.</p>
           </div>
           <label class="switch">
             <input type="checkbox" id="notify-toggle" role="switch" aria-describedby="notify-help">
             <span class="switch-track" aria-hidden="true"></span>
-            <span class="switch-label">Show reminders</span>
+            <span class="switch-label visually-hidden">Show reminders</span>
           </label>
         </div>
         <div class="setting-row">
@@ -319,70 +300,76 @@
             <p class="setting-label">System notifications</p>
             <p class="setting-help" id="notify-permission-text"></p>
           </div>
-          <button type="button" id="notify-permission" class="btn btn-secondary btn-sm" hidden>Allow notifications</button>
+          <button type="button" id="notify-permission" class="btn btn-secondary btn-sm" hidden>Allow</button>
         </div>
       </section>
 
       <!-- Account: only shown when sign-in is configured (js/firebase-config.js) -->
-      <section id="account-view" class="card settings-section" aria-labelledby="account-title" hidden>
-        <h2 id="account-title" class="card-title"><span data-icon="cloud" data-icon-size="18"></span>Account and syncing</h2>
-        <div id="account-signed-out">
-          <p class="setting-help">Sign in to keep your goals and history in your account and use them on your other devices. Signing in is optional; Day by Day works fully without it.</p>
-          <button type="button" id="sign-in" class="btn btn-primary">Sign in with Google</button>
+      <section id="account-view" class="settings-group" aria-labelledby="account-title" hidden>
+        <h2 id="account-title" class="section-title">Account</h2>
+        <div id="account-signed-out" class="setting-row">
+          <div>
+            <p class="setting-label">Sync</p>
+            <p class="setting-help">Optional. Sign in to use your goals on other devices.</p>
+          </div>
+          <button type="button" id="sign-in" class="btn btn-primary btn-sm">Sign in with Google</button>
         </div>
-        <div id="account-signed-in" hidden>
-          <p class="account-who">Signed in as <strong id="account-name"></strong></p>
-          <p id="sync-status" class="sync-status"></p>
-          <p id="sync-last" class="setting-help"></p>
-          <button type="button" id="sign-out" class="btn btn-secondary btn-sm"><span data-icon="log-out" data-icon-size="16"></span>Sign out</button>
+        <div id="account-signed-in" class="setting-row" hidden>
+          <div>
+            <p class="account-who"><span id="account-name"></span></p>
+            <p id="sync-status" class="sync-status"></p>
+            <p id="sync-last" class="setting-help"></p>
+          </div>
+          <button type="button" id="sign-out" class="btn btn-secondary btn-sm">Sign out</button>
         </div>
-        <p id="net-status" class="net-status" hidden><span data-icon="wifi-off" data-icon-size="16"></span>You’re offline. Everything still works and is saved on this device.</p>
+        <p id="net-status" class="setting-help net-status" hidden>You’re offline. Everything still saves on this device.</p>
         <div id="account-error" class="form-errors" role="alert" hidden></div>
       </section>
 
-      <section class="card settings-section" aria-labelledby="plan-title">
-        <h2 id="plan-title" class="card-title"><span data-icon="gem" data-icon-size="18"></span>Subscription</h2>
-        <div class="plan-status">
-          <p class="plan-name" id="plan-name"></p>
-          <p class="setting-help" id="plan-description"></p>
+      <section class="settings-group" aria-labelledby="plan-title">
+        <h2 id="plan-title" class="section-title">Plan</h2>
+        <div class="setting-row plan-status">
+          <div>
+            <p class="setting-label" id="plan-name"></p>
+            <p class="setting-help" id="plan-description"></p>
+          </div>
         </div>
-        <div class="table-wrap">
-          <table class="plan-table">
-            <caption class="visually-hidden">What Free and Pro include</caption>
-            <thead><tr><th scope="col">Feature</th><th scope="col">Free</th><th scope="col">Pro</th></tr></thead>
-            <tbody id="plan-table-body"></tbody>
-          </table>
-        </div>
-        <p class="setting-help">Paid plans aren’t available yet, so there’s nothing to buy or manage. Early access includes everything above.</p>
+        <details class="plan-details">
+          <summary>Compare Free and Pro</summary>
+          <div class="table-wrap">
+            <table class="plan-table">
+              <caption class="visually-hidden">What Free and Pro include</caption>
+              <thead><tr><th scope="col">Feature</th><th scope="col">Free</th><th scope="col">Pro</th></tr></thead>
+              <tbody id="plan-table-body"></tbody>
+            </table>
+          </div>
+        </details>
       </section>
 
-      <section id="data-view" class="card settings-section" aria-labelledby="data-title">
-        <h2 id="data-title" class="card-title"><span data-icon="shield-check" data-icon-size="18"></span>Data and privacy</h2>
-        <div class="promise">
-          <p class="promise-title">No ads, no tracking.</p>
-          <p class="setting-help">Your goals and history are saved on this device<span id="privacy-account-note"></span>. There are no ads, no analytics and no third-party trackers, and your data is never sold or shared.</p>
-        </div>
-        <p id="data-description" class="setting-help">Export a backup file to keep your data safe or move it to another device.</p>
-        <div class="button-row">
-          <button type="button" id="export-data" class="btn btn-secondary"><span data-icon="download" data-icon-size="18"></span>Export data</button>
-          <button type="button" id="import-data" class="btn btn-secondary"><span data-icon="upload" data-icon-size="18"></span>Import data</button>
-          <input type="file" id="import-file" accept="application/json,.json" class="visually-hidden" tabindex="-1" aria-hidden="true">
-        </div>
-        <div id="import-error" class="form-errors" role="alert" hidden></div>
-      </section>
-
-      <section class="card settings-section danger-zone" aria-labelledby="advanced-title">
-        <h2 id="advanced-title" class="card-title"><span data-icon="triangle-alert" data-icon-size="18"></span>Advanced</h2>
+      <section id="data-view" class="settings-group" aria-labelledby="data-title">
+        <h2 id="data-title" class="section-title">Your data</h2>
         <div class="setting-row">
           <div>
-            <p class="setting-label">Delete all goals and history</p>
-            <p class="setting-help" id="reset-help">Permanently removes every goal, day and statistic from this device (and your account, if you’re signed in). Export a backup first if you might want it back.</p>
+            <p class="setting-label">Backup</p>
+            <p id="data-description" class="setting-help">Saved on this device. No ads, analytics or trackers.</p>
           </div>
-          <button type="button" id="reset-data" class="btn btn-danger btn-sm" aria-describedby="reset-help"><span data-icon="trash" data-icon-size="16"></span>Delete everything</button>
+          <div class="button-row">
+            <button type="button" id="export-data" class="btn btn-secondary btn-sm">Export</button>
+            <button type="button" id="import-data" class="btn btn-secondary btn-sm">Import</button>
+            <input type="file" id="import-file" accept="application/json,.json" class="visually-hidden" tabindex="-1" aria-hidden="true">
+          </div>
+        </div>
+        <div id="import-error" class="form-errors" role="alert" hidden></div>
+        <div class="setting-row">
+          <div>
+            <p class="setting-label">Delete all data</p>
+            <p class="setting-help" id="reset-help">Removes every goal and day. This can’t be undone.</p>
+          </div>
+          <button type="button" id="reset-data" class="btn btn-danger-ghost btn-sm" aria-describedby="reset-help">Delete…</button>
         </div>
       </section>
 
-      <p class="app-footer" id="footer-text">Day by Day works offline.</p>
+      <p class="app-footer" id="footer-text">Works offline.</p>
     </section>
   </main>
 
@@ -396,14 +383,14 @@
       <h2 id="goals-dialog-title" class="dialog-title">Edit goals</h2>
       <button type="button" id="manage-done" class="btn btn-primary btn-sm">Done</button>
     </div>
-    <p class="history-note"><span data-icon="info" data-icon-size="16"></span>Changes apply from today. Past days keep the goals, names and schedules they had, so your history and stats stay accurate.</p>
+    <p class="history-note">Changes apply from today. Past days stay as they were.</p>
     <p id="manage-error" class="field-error" role="alert" hidden></p>
 
     <h3 class="subhead">Active <span id="manage-active-count" class="count"></span></h3>
-    <p class="field-hint" id="reorder-help">Drag a handle to reorder, or focus it and use the up and down arrow keys.</p>
+    <p class="visually-hidden" id="reorder-help">Drag to reorder, or use the up and down arrow keys.</p>
     <p id="manage-active-empty" class="muted small" hidden>No active goals yet.</p>
     <ul id="manage-active" class="manage-list"></ul>
-    <button type="button" id="manage-add" class="btn btn-secondary add-goal"><span data-icon="plus" data-icon-size="18"></span>Add goal</button>
+    <button type="button" id="manage-add" class="btn btn-ghost add-goal"><span data-icon="plus" data-icon-size="18"></span>Add goal</button>
 
     <div id="manage-paused-section" hidden>
       <h3 class="subhead subhead-gap">Paused</h3>
@@ -430,12 +417,12 @@
       </div>
 
       <fieldset class="field">
-        <legend class="label">Icon <span class="optional">Optional</span></legend>
+        <legend class="label">Icon</legend>
         <div id="gf-icons" class="choice-grid icon-choices"></div>
       </fieldset>
 
       <fieldset class="field">
-        <legend class="label">Colour <span class="optional">Optional</span></legend>
+        <legend class="label">Colour</legend>
         <div id="gf-colors" class="choice-grid color-choices"></div>
       </fieldset>
 
@@ -443,10 +430,10 @@
         <legend class="label">Schedule</legend>
         <div class="radio-list" id="gf-schedule">
           <label class="radio"><input type="radio" name="gf-schedule" value="daily" checked><span>Every day</span></label>
-          <label class="radio"><input type="radio" name="gf-schedule" value="weekdays"><span>Weekdays (Monday–Friday)</span></label>
+          <label class="radio"><input type="radio" name="gf-schedule" value="weekdays"><span>Weekdays</span></label>
           <label class="radio"><input type="radio" name="gf-schedule" value="days"><span>Selected days</span></label>
           <div id="gf-days" class="day-chips" role="group" aria-label="Days of the week" hidden></div>
-          <label class="radio"><input type="radio" name="gf-schedule" value="weekly"><span>A number of times per week</span></label>
+          <label class="radio"><input type="radio" name="gf-schedule" value="weekly"><span>Times per week</span></label>
           <div id="gf-times-wrap" class="inline-field" hidden>
             <label for="gf-times" class="label-inline">Times per week</label>
             <select id="gf-times" class="input input-sm">
@@ -455,22 +442,22 @@
             </select>
           </div>
         </div>
-        <p class="field-hint" id="gf-schedule-hint">Days a goal isn’t due don’t count toward or against your streak. Times-per-week goals can be checked off on any day and are tracked by week.</p>
+        <p class="field-hint" id="gf-schedule-hint">Days off don’t affect your streak.</p>
         <p id="gf-schedule-error" class="field-error" hidden></p>
       </fieldset>
 
       <fieldset class="field">
-        <legend class="label">Workout split <span class="optional">Optional</span></legend>
-        <label class="checkbox"><input type="checkbox" id="gf-split"><span>Rotate through a workout split</span></label>
+        <legend class="label">Workout split</legend>
+        <label class="checkbox"><input type="checkbox" id="gf-split"><span>Rotate through workouts</span></label>
         <div id="gf-split-wrap" class="split-fields" hidden>
-          <label for="gf-workouts" class="label-inline">Workouts in order, one per line</label>
+          <label for="gf-workouts" class="label-inline">One per line, in order</label>
           <textarea id="gf-workouts" class="input textarea" rows="4" maxlength="700" placeholder="Legs&#10;Chest&#10;Back&#10;Shoulders" aria-describedby="gf-split-hint gf-split-error"></textarea>
           <div class="inline-field">
             <label for="gf-next" class="label-inline" id="gf-next-label">Today’s workout</label>
             <select id="gf-next" class="input input-sm"></select>
           </div>
         </div>
-        <p class="field-hint" id="gf-split-hint">Each day this goal is due shows the next workout in the split. Did something else? Use the ⋯ menu on the goal to swap days. For a times-per-week goal, the split moves on each time you check it off.</p>
+        <p class="field-hint" id="gf-split-hint">Each due day shows the next workout. Did something else? Use ⋯ on the goal to swap.</p>
         <p id="gf-split-error" class="field-error" hidden></p>
       </fieldset>
 
@@ -503,11 +490,11 @@
   <div id="toast" class="toast" aria-hidden="true" hidden></div>
 
   <div id="workout-menu" class="menu" role="menu" aria-labelledby="workout-menu-title" hidden>
-    <p class="menu-title" id="workout-menu-title">Did a different workout?</p>
+    <p class="menu-title" id="workout-menu-title">Did something else?</p>
     <p class="menu-sub" id="workout-menu-sub"></p>
     <div id="workout-menu-items"></div>
     <div class="menu-sep" role="separator"></div>
-    <button type="button" class="menu-item" role="menuitem" id="workout-menu-edit" tabindex="-1"><span data-icon="pencil"></span><span>Edit split</span></button>
+    <button type="button" class="menu-item" role="menuitem" id="workout-menu-edit" tabindex="-1"><span>Edit split</span></button>
   </div>
 
   <dialog id="day-dialog" class="dialog sheet day-sheet" aria-labelledby="day-dialog-title">
@@ -529,14 +516,14 @@
     </form>
   </dialog>
 
-  <script src="js/icons.js?v=13"></script>
-  <script src="js/core.js?v=13"></script>
-  <script src="js/stats.js?v=13"></script>
-  <script src="js/plans.js?v=13"></script>
-  <script src="js/storage.js?v=13"></script>
-  <script src="js/sync.js?v=13"></script>
-  <script src="js/firebase-config.js?v=13"></script>
-  <script src="js/cloud.js?v=13"></script>
-  <script src="js/app.js?v=13"></script>
+  <script src="js/icons.js?v=14"></script>
+  <script src="js/core.js?v=14"></script>
+  <script src="js/stats.js?v=14"></script>
+  <script src="js/plans.js?v=14"></script>
+  <script src="js/storage.js?v=14"></script>
+  <script src="js/sync.js?v=14"></script>
+  <script src="js/firebase-config.js?v=14"></script>
+  <script src="js/cloud.js?v=14"></script>
+  <script src="js/app.js?v=14"></script>
 </body>
 </html>

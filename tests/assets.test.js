@@ -37,7 +37,7 @@ test('the service worker caches every versioned asset at the same version', () =
     const file = ref.replace(/\?.*$/, '');
     assert.ok(sw.includes("'" + file + "?v=' + VERSION"), file + ' is cached by the service worker');
   }
-  for (const file of ['fonts/inter-latin-var.woff2', 'icon.svg', 'manifest.webmanifest']) {
+  for (const file of ['fonts/instrument-sans-latin-var.woff2', 'icon.svg', 'manifest.webmanifest']) {
     assert.ok(fs.existsSync(path.join(__dirname, '..', file)), file + ' exists');
   }
 });
