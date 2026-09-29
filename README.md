@@ -56,7 +56,7 @@ The app has three sections: a left sidebar on screens 768px and wider, and a bot
 
 ### Managing goals
 
-**Edit goals** lists your goals. Drag a handle to reorder (or focus it and use ↑/↓), and use **Edit** to open a goal. The goal form has: name, an optional icon and colour, a **schedule** (every day, weekdays, selected days, or a number of times per week), an optional **reminder** time, an optional **workout split**, and status actions (**Pause**/**Resume**, **Archive** or **Delete**) with a plain explanation of each.
+**Edit goals** lists your goals. Drag a handle to reorder (or focus it and use ↑/↓), and use **Edit** to open a goal. The goal form has: name, an optional icon (86 to choose from, grouped into Fitness, Food and health, Rest and mind, Learning and work, Home and money, People and fun, and Other) and colour, a **schedule** (every day, weekdays, selected days, or a number of times per week), an optional **reminder** time, an optional **workout split**, and status actions (**Pause**/**Resume**, **Archive** or **Delete**) with a plain explanation of each.
 
 - Changes apply **from today**. Every day keeps its own record of which goals were required and what they were called, so renaming, pausing or removing a goal never changes past days or their stats, and a new goal never counts against days before it existed.
 - Removing a goal that has history **archives** it: it leaves today's list but stays in history and Stats, and can be restored. A goal with no history yet (for example a typo added today) is deleted outright.

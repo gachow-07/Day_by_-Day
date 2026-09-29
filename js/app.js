@@ -1198,9 +1198,25 @@
   function buildGoalFormChoices(h) {
     var iconsBox = $('gf-icons');
     iconsBox.textContent = '';
-    iconsBox.appendChild(choice('gf-icon', '', document.createTextNode('None'), 'No icon', !h || !h.icon));
-    icons.GOAL_ICONS.forEach(function (name) {
-      iconsBox.appendChild(choice('gf-icon', name, icon(name, 20), titleCase(name) + ' icon', h && h.icon === name));
+    var none = el('div', 'choice-grid');
+    none.appendChild(choice('gf-icon', '', document.createTextNode('None'), 'No icon', !h || !h.icon));
+    iconsBox.appendChild(none);
+    // A goal whose icon isn't in the picker any more keeps it until changed.
+    var known = icons.GOAL_ICONS.indexOf(h && h.icon) >= 0;
+    var groups = icons.GOAL_ICON_GROUPS.slice();
+    if (h && h.icon && !known && icons.has(h.icon)) groups.unshift({ label: 'Current', icons: [[h.icon, titleCase(h.icon)]] });
+    groups.forEach(function (g) {
+      var labelId = 'gf-icons-' + g.label.toLowerCase().replace(/\W+/g, '-');
+      var head = el('p', 'choice-group-label', g.label);
+      head.id = labelId;
+      iconsBox.appendChild(head);
+      var grid = el('div', 'choice-grid');
+      grid.setAttribute('role', 'group');
+      grid.setAttribute('aria-labelledby', labelId);
+      g.icons.forEach(function (pair) {
+        grid.appendChild(choice('gf-icon', pair[0], icon(pair[0], 20), pair[1], h && h.icon === pair[0]));
+      });
+      iconsBox.appendChild(grid);
     });
     var colors = $('gf-colors');
     colors.textContent = '';
@@ -1330,6 +1346,10 @@
           : 'No history yet, so deleting removes it.');
     }
     openDialog('goal-form-dialog', $('gf-name'));
+    var picked = document.querySelector('input[name="gf-icon"]:checked');
+    var box = $('gf-icons');
+    box.scrollTop = 0;
+    if (picked && picked.value) box.scrollTop += picked.parentNode.getBoundingClientRect().top - box.getBoundingClientRect().top - 40;
   }
 
   function readGoalForm() {
