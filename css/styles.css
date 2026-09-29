@@ -1505,6 +1505,17 @@ main:focus,
   border-color: var(--warning);
 }
 
+/* Amount goals (time, water) fill in the goal's own colour. */
+.goal.has-log[data-color] .goal-check:indeterminate + .goal-box {
+  background: linear-gradient(to top, var(--chip) var(--fill, 50%), transparent var(--fill, 50%));
+  border-color: var(--chip);
+}
+
+.goal.has-log[data-color] .goal-check:checked + .goal-box {
+  background: var(--chip);
+  border-color: var(--chip);
+}
+
 .goal-check:indeterminate + .goal-box .icon {
   opacity: 0;
 }
@@ -2681,6 +2692,10 @@ button.cal-cell:hover {
 
 .num-input {
   width: 5rem;
+}
+
+.num-input-wide {
+  width: 7rem;
 }
 
 .status-actions {

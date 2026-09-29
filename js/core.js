@@ -24,7 +24,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  var SCHEMA_VERSION = 6;
+  var SCHEMA_VERSION = 7;
   var APP_ID = 'day-by-day';
   var DAY_MS = 24 * 60 * 60 * 1000;
   var MIN_YEAR = 1970;
@@ -40,7 +40,15 @@
   var MAX_WORKOUTS = 14;
   var MAX_WORKOUT_LENGTH = 40;
   var MIN_GOAL_MINUTES = 5;
-  var MAX_MINUTES = 1440;        // a day
+  /* Amount goals: time in minutes, or water in millilitres or US fluid ounces. */
+  var UNITS = {
+    min: { minGoal: 5, maxGoal: 1440, maxDay: 1440 },
+    ml: { minGoal: 100, maxGoal: 10000, maxDay: 20000 },
+    oz: { minGoal: 4, maxGoal: 384, maxDay: 768 }
+  };
+  /* How a water goal in fl oz is shown: fl oz, cups (8 fl oz) or gallons (128 fl oz). */
+  var OZ_DISPLAYS = ['oz', 'cup', 'gal'];
+  var ML_PER_OZ = 29.5735;
   var MAX_LOGS = 100;            // time entries per goal per day
   var PARTIAL_CREDIT = 0.5;      // "partly done" counts as half in completion rates
   var TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -116,7 +124,7 @@
 
   /*
    * State (schema 6)
-   *   habits: [{ id, name, createdOn, status, archivedOn, icon, color, schedule, reminder, split, minutes }]
+   *   habits: [{ id, name, createdOn, status, archivedOn, icon, color, schedule, reminder, split, amount }]
    *     status is 'active', 'paused' or 'archived'; array order is display order.
    *     icon: a Lucide icon name or null; color: one of GOAL_COLORS or null.
    *     schedule: { type: 'daily' } | { type: 'weekdays' }
@@ -126,16 +134,20 @@
    *       rotation: each day the goal is due takes the next workout, and the
    *       day it is due on `start` gets workouts[offset]. Times-per-week goals
    *       move on to the next workout after each day they're done.
-   *     minutes: null, or a daily time goal in minutes (5-1440) that is
-   *       logged in pieces ("study for 2 hours", 30 minutes at a time).
-   *   days: { 'YYYY-MM-DD': { habits: [{ id, name, flex?, target?, workout?, minutes? }],
-   *                           done: [id], partial?: [id], logs?: { id: [minutes] } } }
+   *     amount: null, or a daily amount logged in pieces: { unit, goal } where
+   *       unit is 'min' (time: "study for 2 hours", 30 minutes at a time),
+   *       'ml' or 'oz' (water: 2 litres a day, a glass at a time). See UNITS.
+   *       Water in 'oz' may add display: 'oz' | 'cup' | 'gal', the unit it's
+   *       shown and typed in; it's always stored and logged in whole fl oz.
+   *   days: { 'YYYY-MM-DD': { habits: [{ id, name, flex?, target?, workout?, amount? }],
+   *                           done: [id], partial?: [id], logs?: { id: [amounts] } } }
    *     One record per calendar date: a snapshot of the goals shown that day
    *     (with their names at the time) and which were done. Goals with
    *     flex: true and target: N (N times a week) can be ticked but are not
    *     required, so they don't decide whether the day is Locked In.
-   *     workout is the split workout the goal had that day; minutes is the
-   *     goal's time goal that day. logs are the time entries for timed goals,
+   *     workout is the split workout the goal had that day; amount is the
+   *     goal's amount goal that day. logs are the entries for amount goals
+   *     (in the goal's unit),
    *     which are done once they add up to the goal. partial lists untimed
    *     goals marked "partly done". Neither kind of partial progress makes a
    *     day Locked In, but both count toward completion rates (a timed goal
@@ -279,6 +291,34 @@
     return out;
   }
 
+  /** Validate an amount goal: null or { unit, goal }. Returns { amount } or { error }. */
+  function cleanAmount(input) {
+    if (input === null) return { amount: null };
+    var unit = input && input.unit;
+    var u = UNITS[unit];
+    if (!u) return { error: 'Choose what to track.' };
+    var goal = Number(input.goal);
+    if (!Number.isInteger(goal) || goal < u.minGoal || goal > u.maxGoal) {
+      return { error: unit === 'min' ? 'Set a time goal between 5 minutes and 24 hours.'
+        : unit === 'ml' ? 'Set a water goal between 100 ml and 10 L.' : 'Set a water goal between 4 fl oz and 3 gallons.' };
+    }
+    var out = { unit: unit, goal: goal };
+    if (input.display !== undefined && input.display !== null) {
+      if (unit !== 'oz' || OZ_DISPLAYS.indexOf(input.display) < 0) return { error: 'Choose how to show the water goal.' };
+      if (input.display !== 'oz') out.display = input.display;
+    }
+    return { amount: out };
+  }
+
+  /** A stored amount: known unit, whole goal in range, optional display for oz. */
+  function validAmount(a, minGoal) {
+    if (!isPlainObject(a) || !UNITS[a.unit]) return false;
+    var keys = Object.keys(a).filter(function (k) { return k !== 'unit' && k !== 'goal' && k !== 'display'; });
+    if (keys.length) return false;
+    if (a.display !== undefined && (a.unit !== 'oz' || a.display === 'oz' || OZ_DISPLAYS.indexOf(a.display) < 0)) return false;
+    return Number.isInteger(a.goal) && a.goal >= (minGoal || 1) && a.goal <= UNITS[a.unit].maxGoal;
+  }
+
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
   }
@@ -352,8 +392,8 @@
     };
   }
 
-  /** Minutes logged for a goal in a daily record. */
-  function loggedMinutes(record, id) {
+  /** The total logged for an amount goal in a daily record (in its unit). */
+  function loggedAmount(record, id) {
     var list = record && record.logs && record.logs[id];
     return list ? list.reduce(function (a, m) { return a + m; }, 0) : 0;
   }
@@ -361,7 +401,7 @@
   /** How much of a goal was done that day, from 0 to 1. */
   function entryCredit(record, entry) {
     if (record.done.indexOf(entry.id) >= 0) return 1;
-    if (entry.minutes) return Math.min(1, loggedMinutes(record, entry.id) / entry.minutes);
+    if (entry.amount) return Math.min(1, loggedAmount(record, entry.id) / entry.amount.goal);
     if (record.partial && record.partial.indexOf(entry.id) >= 0) return PARTIAL_CREDIT;
     return 0;
   }
@@ -384,15 +424,15 @@
     var logs = {};
     if (rec.logs) {
       Object.keys(rec.logs).forEach(function (id) {
-        if (byId[id] && byId[id].minutes && rec.logs[id].length) logs[id] = rec.logs[id];
+        if (byId[id] && byId[id].amount && rec.logs[id].length) logs[id] = rec.logs[id];
       });
     }
     var sum = function (id) { return (logs[id] || []).reduce(function (a, m) { return a + m; }, 0); };
     rec.done = ids.filter(function (id) {
-      return byId[id].minutes ? sum(id) >= byId[id].minutes : rec.done.indexOf(id) >= 0;
+      return byId[id].amount ? sum(id) >= byId[id].amount.goal : rec.done.indexOf(id) >= 0;
     });
     var partial = ids.filter(function (id) {
-      return !byId[id].minutes && rec.partial && rec.partial.indexOf(id) >= 0 && rec.done.indexOf(id) < 0;
+      return !byId[id].amount && rec.partial && rec.partial.indexOf(id) >= 0 && rec.done.indexOf(id) < 0;
     });
     if (partial.length) rec.partial = partial; else delete rec.partial;
     if (Object.keys(logs).length) rec.logs = logs; else delete rec.logs;
@@ -412,7 +452,7 @@
       var entry = how === 'flex' ? { id: h.id, name: h.name, flex: true, target: h.schedule.times } : { id: h.id, name: h.name };
       var workout = workoutOn(state, h, date);
       if (workout) entry.workout = workout;
-      if (h.minutes) entry.minutes = h.minutes;
+      if (h.amount) entry.amount = clone(h.amount);
       out.push(entry);
     });
     return out;
@@ -437,12 +477,28 @@
       delete next.days[today];
       return next;
     }
-    // A goal that becomes timed while already ticked keeps its tick.
     snap.forEach(function (h) {
       var before = rec.habits.filter(function (x) { return x.id === h.id; })[0];
-      if (h.minutes && before && !before.minutes && rec.done.indexOf(h.id) >= 0 && !loggedMinutes(rec, h.id)) {
-        rec.logs = rec.logs || {};
-        rec.logs[h.id] = [h.minutes];
+      if (!before || !h.amount) return;
+      var list = rec.logs && rec.logs[h.id];
+      if (!before.amount) {
+        // A goal that gets an amount while already ticked keeps its tick.
+        if (rec.done.indexOf(h.id) >= 0 && !loggedAmount(rec, h.id)) {
+          rec.logs = rec.logs || {};
+          rec.logs[h.id] = [h.amount.goal];
+        }
+      } else if (before.amount.unit !== h.amount.unit && list) {
+        // Water switched between ml and oz: convert today's entries.
+        // Anything else (time to water) can't be converted, so starts over.
+        var from = before.amount.unit;
+        var to = h.amount.unit;
+        if ((from === 'ml' && to === 'oz') || (from === 'oz' && to === 'ml')) {
+          rec.logs[h.id] = list.map(function (v) {
+            return Math.max(1, Math.round(to === 'oz' ? v / ML_PER_OZ : v * ML_PER_OZ));
+          });
+        } else {
+          delete rec.logs[h.id];
+        }
       }
     });
     rec.habits = snap;
@@ -493,13 +549,14 @@
     var next = clone(state);
     var r = next.days[today];
     var entry = r.habits.filter(function (h) { return h.id === habitId; })[0];
-    if (entry.minutes) {
-      // Ticking a timed goal logs the time that's left; unticking takes
-      // back the most recent entries until it's below the goal again.
+    if (entry.amount) {
+      // Ticking an amount goal logs what's left; unticking takes back the
+      // most recent entries until it's below the goal again.
+      var goal = entry.amount.goal;
       var list = (r.logs && r.logs[habitId]) || [];
-      var sum = loggedMinutes(r, habitId);
-      if (done && sum < entry.minutes) list.push(entry.minutes - sum);
-      if (!done) while (list.length && sum >= entry.minutes) sum -= list.pop();
+      var sum = loggedAmount(r, habitId);
+      if (done && sum < goal) list.push(goal - sum);
+      if (!done) while (list.length && sum >= goal) sum -= list.pop();
       r.logs = r.logs || {};
       r.logs[habitId] = list;
     } else {
@@ -518,11 +575,11 @@
     return rec ? rec.habits.filter(function (h) { return h.id === habitId; })[0] || null : null;
   }
 
-  /** Mark an untimed goal "partly done" today (or clear it). */
+  /** Mark a goal without an amount "partly done" today (or clear it). */
   function setHabitPartial(state, habitId, partial, today) {
     var entry = todayEntry(state, habitId, today);
     if (!entry) return failure(state, 'not-today', 'That goal is not on today’s list.');
-    if (entry.minutes) return failure(state, 'timed', 'Log time for this goal instead.');
+    if (entry.amount) return failure(state, 'amount', 'Log an amount for this goal instead.');
     var next = clone(state);
     var r = next.days[today];
     var list = (r.partial || []).filter(function (id) { return id !== habitId; });
@@ -535,15 +592,21 @@
     return result(next, {});
   }
 
-  /** Add a time entry to a timed goal today. Returns { done, logged, goal }. */
-  function logTime(state, habitId, minutes, today) {
+  /**
+   * Add an entry (in the goal's unit: minutes, ml or oz) to an amount goal
+   * today. Returns { done, logged, goal, unit }.
+   */
+  function logAmount(state, habitId, value, today) {
     var entry = todayEntry(state, habitId, today);
     if (!entry) return failure(state, 'not-today', 'That goal is not on today’s list.');
-    if (!entry.minutes) return failure(state, 'untimed', 'This goal doesn’t track time.');
-    var m = Number(minutes);
-    if (!Number.isInteger(m) || m < 1) return failure(state, 'invalid-minutes', 'Enter a number of minutes.');
-    var logged = loggedMinutes(state.days[today], habitId);
-    if (logged + m > MAX_MINUTES) return failure(state, 'invalid-minutes', 'That’s more than 24 hours in one day.');
+    if (!entry.amount) return failure(state, 'no-amount', 'This goal doesn’t track an amount.');
+    var unit = entry.amount.unit;
+    var m = Number(value);
+    if (!Number.isInteger(m) || m < 1) return failure(state, 'invalid-amount', unit === 'min' ? 'Enter a number of minutes.' : 'Enter how much you drank.');
+    var logged = loggedAmount(state.days[today], habitId);
+    if (logged + m > UNITS[unit].maxDay) {
+      return failure(state, 'invalid-amount', unit === 'min' ? 'That’s more than 24 hours in one day.' : 'That’s more than anyone should drink in a day. Check the amount.');
+    }
     var r0 = state.days[today];
     if (r0.logs && r0.logs[habitId] && r0.logs[habitId].length >= MAX_LOGS) return failure(state, 'too-many', 'That’s a lot of entries for one day. Try a bigger amount.');
     var next = clone(state);
@@ -551,20 +614,20 @@
     r.logs = r.logs || {};
     r.logs[habitId] = (r.logs[habitId] || []).concat([m]);
     tidyRecord(r);
-    return result(next, { done: r.done.indexOf(habitId) >= 0, logged: logged + m, goal: entry.minutes, lockedIn: recordSummary(r).lockedIn });
+    return result(next, { done: r.done.indexOf(habitId) >= 0, logged: logged + m, goal: entry.amount.goal, unit: unit, lockedIn: recordSummary(r).lockedIn });
   }
 
-  /** Remove the most recent time entry for a goal today. */
+  /** Remove the most recent entry for an amount goal today. */
   function undoLog(state, habitId, today) {
     var rec = state.days[today];
     if (!rec || !rec.logs || !rec.logs[habitId] || !rec.logs[habitId].length) {
-      return failure(state, 'nothing', 'There’s no time to undo.');
+      return failure(state, 'nothing', 'There’s nothing to undo.');
     }
     var next = clone(state);
     var r = next.days[today];
     var removed = r.logs[habitId].pop();
     tidyRecord(r);
-    return result(next, { removed: removed, logged: loggedMinutes(r, habitId) });
+    return result(next, { removed: removed, logged: loggedAmount(r, habitId) });
   }
 
   /**
@@ -621,12 +684,10 @@
       if (opts.reminder !== null && opts.reminder !== '' && !TIME_RE.test(opts.reminder)) return { error: 'Enter a reminder time like 08:30.' };
       out.reminder = opts.reminder || null;
     }
-    if (opts.minutes !== undefined) {
-      var mins = opts.minutes === null ? null : Number(opts.minutes);
-      if (mins !== null && (!Number.isInteger(mins) || mins < MIN_GOAL_MINUTES || mins > MAX_MINUTES)) {
-        return { error: 'Set a time goal between 5 minutes and 24 hours.' };
-      }
-      out.minutes = mins;
+    if (opts.amount !== undefined) {
+      var am = cleanAmount(opts.amount);
+      if (am.error) return { error: am.error };
+      out.amount = am.amount;
     }
     if (opts.split !== undefined) {
       var sp = cleanSplit(opts.split, today);
@@ -650,7 +711,7 @@
     var next = clone(state);
     var id = nextHabitId(next);
     var habit = { id: id, name: cleanName(name), createdOn: today, status: 'active', archivedOn: null,
-      icon: null, color: null, schedule: { type: 'daily' }, reminder: null, split: null, minutes: null };
+      icon: null, color: null, schedule: { type: 'daily' }, reminder: null, split: null, amount: null };
     Object.keys(details.details).forEach(function (k) { habit[k] = details.details[k]; });
     next.habits.push(habit);
     return result(syncTodayRecord(next, today), { id: id });
@@ -834,7 +895,7 @@
         if (sch.error || JSON.stringify(sch.schedule) !== JSON.stringify(h.schedule)) err(label + '.schedule is invalid.');
         if (h.reminder !== null && !(typeof h.reminder === 'string' && TIME_RE.test(h.reminder))) err(label + '.reminder is invalid.');
         if (!validSplit(h.split)) err(label + '.split is invalid.');
-        if (h.minutes !== null && !(Number.isInteger(h.minutes) && h.minutes >= MIN_GOAL_MINUTES && h.minutes <= MAX_MINUTES)) err(label + '.minutes is invalid.');
+        if (h.amount !== null && !validAmount(h.amount, UNITS[h.amount && h.amount.unit] && UNITS[h.amount.unit].minGoal)) err(label + '.amount is invalid.');
       });
       if (active > MAX_ACTIVE_HABITS) err('Too many active habits.');
     }
@@ -856,8 +917,8 @@
         if (!isPlainObject(h)) { err(label + ' has an invalid habit.'); return; }
         var badFlex = h.flex !== undefined && (h.flex !== true || !Number.isInteger(h.target) || h.target < 1 || h.target > 6);
         var badWorkout = h.workout !== undefined && !(typeof h.workout === 'string' && h.workout.trim() && h.workout.length <= MAX_WORKOUT_LENGTH);
-        var badMinutes = h.minutes !== undefined && !(Number.isInteger(h.minutes) && h.minutes >= 1 && h.minutes <= MAX_MINUTES);
-        if (typeof h.id !== 'string' || !validName(h.name) || badFlex || badWorkout || badMinutes || (h.flex === undefined && h.target !== undefined)) {
+        var badAmount = h.amount !== undefined && !validAmount(h.amount, 1);
+        if (typeof h.id !== 'string' || !validName(h.name) || badFlex || badWorkout || badAmount || (h.flex === undefined && h.target !== undefined)) {
           err(label + ' has an invalid habit.');
           return;
         }
@@ -874,7 +935,7 @@
       if (rec.partial !== undefined) {
         if (!Array.isArray(rec.partial) || rec.partial.some(function (id, i, a) {
           var e = entryOf(id);
-          return !e || e.minutes || rec.done.indexOf(id) >= 0 || a.indexOf(id) !== i;
+          return !e || e.amount || rec.done.indexOf(id) >= 0 || a.indexOf(id) !== i;
         })) err(label + ' has an invalid partly done goal.');
       }
       if (rec.logs !== undefined) {
@@ -884,18 +945,19 @@
           Object.keys(rec.logs).forEach(function (id) {
             var e = entryOf(id);
             var list = rec.logs[id];
-            if (!e || !e.minutes || !Array.isArray(list) || !list.length || list.length > MAX_LOGS ||
-                list.some(function (m) { return !Number.isInteger(m) || m < 1 || m > MAX_MINUTES; }) ||
-                list.reduce(function (a, m) { return a + m; }, 0) > MAX_MINUTES) {
+            var maxDay = e && e.amount && UNITS[e.amount.unit] ? UNITS[e.amount.unit].maxDay : 0;
+            if (!e || !e.amount || !Array.isArray(list) || !list.length || list.length > MAX_LOGS ||
+                list.some(function (m) { return !Number.isInteger(m) || m < 1 || m > maxDay; }) ||
+                list.reduce(function (a, m) { return a + m; }, 0) > maxDay) {
               err(label + ' has invalid time logs.');
             }
           });
         }
       }
       rec.habits.forEach(function (h) {
-        if (!isPlainObject(h) || !h.minutes) return;
-        var reached = loggedMinutes(rec, h.id) >= h.minutes;
-        if (reached !== (rec.done.indexOf(h.id) >= 0)) err(label + ' has a timed goal whose logs don’t match its tick.');
+        if (!isPlainObject(h) || !isPlainObject(h.amount)) return;
+        var reached = loggedAmount(rec, h.id) >= h.amount.goal;
+        if (reached !== (rec.done.indexOf(h.id) >= 0)) err(label + ' has an amount goal whose logs don’t match its tick.');
       });
     });
 
@@ -1020,6 +1082,9 @@
    *       goals) and the day's workout to daily records.
    *   6 — Adds time goals (minutes, null for existing goals), time logs and
    *       "partly done" marks to daily records.
+   *   7 — Generalises time goals into amount goals, so water can be tracked
+   *       too: minutes: n becomes amount: { unit: 'min', goal: n } on goals
+   *       and daily records. Logs are unchanged (still minutes).
    *
    * To add version N+1: bump SCHEMA_VERSION and add MIGRATIONS[N].
    */
@@ -1172,6 +1237,41 @@
         return h;
       });
       return next;
+    },
+
+    6: function v6ToV7(old) {
+      if (!isPlainObject(old)) throw new Error('Saved data is not an object.');
+      if (!Array.isArray(old.habits)) throw new Error('habits must be a list.');
+      var next = clone(old);
+      next.schemaVersion = 7;
+      var toAmount = function (h) {
+        if (!isPlainObject(h)) return h;
+        if (h.minutes !== undefined) {
+          if (h.minutes !== null) h.amount = { unit: 'min', goal: h.minutes };
+          else if (h.amount === undefined) h.amount = null;
+          delete h.minutes;
+        }
+        return h;
+      };
+      next.habits = next.habits.map(function (h) {
+        h = toAmount(h);
+        if (isPlainObject(h) && h.amount === undefined) h.amount = null;
+        return h;
+      });
+      if (isPlainObject(next.days)) {
+        Object.keys(next.days).forEach(function (d) {
+          var rec = next.days[d];
+          if (!isPlainObject(rec) || !Array.isArray(rec.habits)) return;
+          rec.habits = rec.habits.map(function (e) {
+            if (isPlainObject(e) && e.minutes !== undefined) {
+              e.amount = { unit: 'min', goal: e.minutes };
+              delete e.minutes;
+            }
+            return e;
+          });
+        });
+      }
+      return next;
     }
   };
 
@@ -1234,7 +1334,10 @@
           var item = { id: h.id, name: h.name, done: rec.done.indexOf(h.id) >= 0 };
           if (h.flex) item.flexible = true;
           if (h.workout) item.workout = h.workout;
-          if (h.minutes) item.minutes = { logged: loggedMinutes(rec, h.id), goal: h.minutes };
+          if (h.amount) {
+            item.amount = { unit: h.amount.unit, logged: loggedAmount(rec, h.id), goal: h.amount.goal };
+            if (h.amount.display) item.amount.display = h.amount.display;
+          }
           else if (rec.partial && rec.partial.indexOf(h.id) >= 0) item.partlyDone = true;
           return item;
         }),
@@ -1326,11 +1429,13 @@
     swapWorkout: swapWorkout,
     PARTIAL_CREDIT: PARTIAL_CREDIT,
     MIN_GOAL_MINUTES: MIN_GOAL_MINUTES,
-    loggedMinutes: loggedMinutes,
+    UNITS: UNITS,
+    cleanAmount: cleanAmount,
+    loggedAmount: loggedAmount,
     entryCredit: entryCredit,
     entryProgress: entryProgress,
     setHabitPartial: setHabitPartial,
-    logTime: logTime,
+    logAmount: logAmount,
     undoLog: undoLog,
     moveHabit: moveHabit,
     setHabitStatus: setHabitStatus,

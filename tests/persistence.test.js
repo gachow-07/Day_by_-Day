@@ -130,8 +130,8 @@ test('challenge data (v2) becomes ongoing habits with day-by-day history', () =>
   assert.equal(r.fromVersion, 2);
   const s = r.state;
   assert.deepEqual(s.habits, [
-    { id: 'h1', name: 'Workout', createdOn: '2026-09-01', status: 'active', archivedOn: null, icon: null, color: null, schedule: { type: 'daily' }, reminder: null, split: null, minutes: null },
-    { id: 'h2', name: 'Read', createdOn: '2026-09-01', status: 'active', archivedOn: null, icon: null, color: null, schedule: { type: 'daily' }, reminder: null, split: null, minutes: null }
+    { id: 'h1', name: 'Workout', createdOn: '2026-09-01', status: 'active', archivedOn: null, icon: null, color: null, schedule: { type: 'daily' }, reminder: null, split: null, amount: null },
+    { id: 'h2', name: 'Read', createdOn: '2026-09-01', status: 'active', archivedOn: null, icon: null, color: null, schedule: { type: 'daily' }, reminder: null, split: null, amount: null }
   ]);
   // Attempt 1: Sep 1–3 done, Sep 4 missed; attempt 2 began Sep 5: Sep 5–6 done; Sep 7 half-done.
   assert.deepEqual(Object.keys(s.days).sort(), ['2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04', '2026-09-05', '2026-09-06', '2026-09-07']);

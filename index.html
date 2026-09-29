@@ -9,8 +9,8 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="preload" href="fonts/instrument-sans-latin-var.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/styles.css?v=16">
-  <script src="js/theme.js?v=16"></script>
+  <link rel="stylesheet" href="css/styles.css?v=18">
+  <script src="js/theme.js?v=18"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -458,6 +458,17 @@
             <input id="gf-dur-m" class="input input-sm num-input" type="number" min="0" max="59" step="5" inputmode="numeric" value="0">
             <label for="gf-dur-m" class="label-inline">min a day</label>
           </div>
+          <label class="radio"><input type="radio" name="gf-track" value="water"><span>Water</span></label>
+          <div id="gf-water-wrap" class="duration-fields inline-field" role="group" aria-label="Daily water goal" hidden>
+            <input id="gf-water-goal" class="input input-sm num-input num-input-wide" type="number" min="0" step="0.5" inputmode="decimal" value="8" aria-label="Water goal">
+            <select id="gf-water-unit" class="input input-sm" aria-label="Unit">
+              <option value="cup">cups</option>
+              <option value="oz">fl oz</option>
+              <option value="gal">gallons</option>
+              <option value="ml">ml</option>
+            </select>
+            <span class="label-inline">a day</span>
+          </div>
         </div>
         <p class="field-hint" id="gf-track-hint">Anything can be marked partly done from its ⋯ menu.</p>
         <p id="gf-track-error" class="field-error" hidden></p>
@@ -518,16 +529,20 @@
     <form id="log-form" novalidate>
       <h2 id="log-title" class="dialog-title">Log time</h2>
       <p id="log-sub" class="dialog-message"></p>
-      <div class="duration-fields" role="group" aria-label="How long">
+      <div class="duration-fields" id="log-time-fields" role="group" aria-label="How long">
         <input id="log-hours" class="input input-sm num-input" type="number" min="0" max="24" step="1" inputmode="numeric" value="0">
         <label for="log-hours" class="label-inline">h</label>
         <input id="log-mins" class="input input-sm num-input" type="number" min="0" max="59" step="5" inputmode="numeric" value="30">
         <label for="log-mins" class="label-inline">min</label>
       </div>
+      <div class="duration-fields" id="log-water-fields" hidden>
+        <input id="log-value" class="input input-sm num-input num-input-wide" type="number" min="0" step="0.5" inputmode="decimal" value="1" aria-label="Amount">
+        <select id="log-unit" class="input input-sm" aria-label="Unit"></select>
+      </div>
       <p id="log-error" class="field-error" role="alert" hidden></p>
       <div class="dialog-actions">
         <button type="button" id="log-cancel" class="btn btn-secondary">Cancel</button>
-        <button type="submit" class="btn btn-primary">Log time</button>
+        <button type="submit" class="btn btn-primary" id="log-save">Log time</button>
       </div>
     </form>
   </dialog>
@@ -551,14 +566,14 @@
     </form>
   </dialog>
 
-  <script src="js/icons.js?v=16"></script>
-  <script src="js/core.js?v=16"></script>
-  <script src="js/stats.js?v=16"></script>
-  <script src="js/plans.js?v=16"></script>
-  <script src="js/storage.js?v=16"></script>
-  <script src="js/sync.js?v=16"></script>
-  <script src="js/firebase-config.js?v=16"></script>
-  <script src="js/cloud.js?v=16"></script>
-  <script src="js/app.js?v=16"></script>
+  <script src="js/icons.js?v=18"></script>
+  <script src="js/core.js?v=18"></script>
+  <script src="js/stats.js?v=18"></script>
+  <script src="js/plans.js?v=18"></script>
+  <script src="js/storage.js?v=18"></script>
+  <script src="js/sync.js?v=18"></script>
+  <script src="js/firebase-config.js?v=18"></script>
+  <script src="js/cloud.js?v=18"></script>
+  <script src="js/app.js?v=18"></script>
 </body>
 </html>

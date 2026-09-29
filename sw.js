@@ -11,7 +11,7 @@
  */
 'use strict';
 
-var VERSION = '16';
+var VERSION = '18';
 var CACHE = 'day-by-day-v' + VERSION;
 var ASSETS = [
   './',
