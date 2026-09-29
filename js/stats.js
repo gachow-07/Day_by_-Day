@@ -99,7 +99,7 @@
     var possible = 0;
     var locked = 0;
     days.forEach(function (d) {
-      done += d.summary.completed;
+      done += d.summary.credit;
       possible += d.summary.total;
       if (d.summary.lockedIn) locked++;
     });
@@ -158,7 +158,7 @@
     var byDow = [0, 1, 2, 3, 4, 5, 6].map(function (dow) { return { dow: dow, done: 0, possible: 0, days: 0 }; });
     days.forEach(function (d) {
       var b = byDow[core.dayOfWeek(d.date)];
-      b.done += d.summary.completed;
+      b.done += d.summary.credit;
       b.possible += d.summary.total;
       b.days++;
     });
@@ -199,7 +199,7 @@
         if (!entry) return;
         var done = rec.done.indexOf(h.id) >= 0;
         if (!entry.flex) {
-          daily.push({ date: d, done: done });
+          daily.push({ date: d, done: done, credit: core.entryCredit(rec, entry) });
           return;
         }
         var w = weekStartOf(d, weekStart);
@@ -227,13 +227,14 @@
         });
       }
       var completed = daily.filter(function (d) { return d.done; }).length;
+      var credit = daily.reduce(function (a, d) { return a + d.credit; }, 0);
       var ok = function (d) { return d.done; };
       return Object.assign(base, {
         unit: 'day',
         activeDays: daily.length,
         periods: daily.length,
         completed: completed,
-        completionRate: daily.length ? Math.round((completed / daily.length) * 100) : 0,
+        completionRate: daily.length ? Math.round((credit / daily.length) * 100) : 0,
         currentStreak: runBack(daily, isDay(today), ok),
         bestStreak: bestRun(daily, ok)
       });
@@ -290,7 +291,8 @@
               due++;
               if (isDone) done++;
             }
-            cell.state = isDone ? 'done' : d === today ? 'pending' : entry.flex ? 'open' : 'missed';
+            var part = !isDone && core.entryCredit(rec, entry) > 0;
+            cell.state = isDone ? 'done' : part ? 'partial' : d === today ? 'pending' : entry.flex ? 'open' : 'missed';
           }
         }
         col.push(cell);
@@ -404,7 +406,7 @@
     var s = summaryOf(state, date);
     if (!s.total) return 'none';
     if (s.lockedIn) return 'locked';
-    if (s.completed > 0) return 'partial';
+    if (s.credit > 0) return 'partial';
     return date === today ? 'pending' : 'missed';
   }
 
@@ -450,7 +452,8 @@
       lockedIn: s.lockedIn,
       focus: state.focus && state.focus[date] ? state.focus[date] : '',
       items: rec ? rec.habits.map(function (h) {
-        return { id: h.id, name: h.name, done: rec.done.indexOf(h.id) >= 0, flexible: !!h.flex, workout: h.workout || null };
+        return { id: h.id, name: h.name, done: rec.done.indexOf(h.id) >= 0, flexible: !!h.flex, workout: h.workout || null,
+          progress: core.entryProgress(rec, h), minutes: h.minutes || null, logged: h.minutes ? core.loggedMinutes(rec, h.id) : null };
       }) : []
     };
   }

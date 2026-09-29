@@ -60,7 +60,7 @@ test('times-per-week goals can be ticked but don’t decide Locked In', () => {
   assert.deepEqual(s.days[MON].habits[1], { id: 'h2', name: 'Run', flex: true, target: 3 });
   s = core.setHabitDone(s, 'h1', true, MON).state;
   assert.equal(core.recordSummary(s.days[MON]).lockedIn, true, 'Run is optional today');
-  assert.deepEqual(core.recordSummary(s.days[MON]), { total: 1, completed: 1, percentage: 100, lockedIn: true });
+  assert.deepEqual(core.recordSummary(s.days[MON]), { total: 1, completed: 1, credit: 1, percentage: 100, lockedIn: true });
   s = core.setHabitDone(s, 'h2', true, MON).state;
   assert.equal(stats.weeklyProgress(s, MON, 1, 'h2'), 1);
 });

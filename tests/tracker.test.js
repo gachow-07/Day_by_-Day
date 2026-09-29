@@ -28,7 +28,7 @@ test('completing every goal locks in the day and grows the streak', () => {
   const r = core.setHabitDone(s, 'h3', true, MON);
   assert.equal(r.lockedIn, true);
   assert.equal(stats.currentStreak(r.state, MON), 1);
-  assert.deepEqual(core.recordSummary(r.state.days[MON]), { total: 3, completed: 3, percentage: 100, lockedIn: true });
+  assert.deepEqual(core.recordSummary(r.state.days[MON]), { total: 3, completed: 3, credit: 3, percentage: 100, lockedIn: true });
   // Unticking takes it back.
   const undo = core.setHabitDone(r.state, 'h3', false, MON);
   assert.equal(undo.lockedIn, false);
