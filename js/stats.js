@@ -302,6 +302,29 @@
     return { start: start, weeks: cols, due: due, done: done, doneAll: doneAll };
   }
 
+  /**
+   * Average logged per day for an amount goal (water or time) over the
+   * `days` days before today, in its current unit. Only days it was due in
+   * that same unit count, and today is left out because it isn't over.
+   * Returns { unit, average, days } or null when there's nothing to average.
+   */
+  function amountAverage(state, habitId, today, days) {
+    var h = core.findHabit(state, habitId);
+    if (!h || !h.amount) return null;
+    var from = core.addDays(today, -(days || 30));
+    var total = 0;
+    var n = 0;
+    core.sortedDates(state).forEach(function (d) {
+      if (d < from || d >= today) return;
+      var rec = state.days[d];
+      var e = rec.habits.filter(function (x) { return x.id === habitId; })[0];
+      if (!e || !e.amount || e.amount.unit !== h.amount.unit) return;
+      total += core.loggedAmount(rec, habitId);
+      n++;
+    });
+    return n ? { unit: h.amount.unit, average: Math.round(total / n), days: n } : null;
+  }
+
   /* ---------------- Insights ---------------- */
 
   var DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -453,7 +476,7 @@
       focus: state.focus && state.focus[date] ? state.focus[date] : '',
       items: rec ? rec.habits.map(function (h) {
         return { id: h.id, name: h.name, done: rec.done.indexOf(h.id) >= 0, flexible: !!h.flex, workout: h.workout || null,
-          progress: core.entryProgress(rec, h), minutes: h.minutes || null, logged: h.minutes ? core.loggedMinutes(rec, h.id) : null };
+          progress: core.entryProgress(rec, h), amount: h.amount || null, logged: h.amount ? core.loggedAmount(rec, h.id) : null };
       }) : []
     };
   }
@@ -471,6 +494,7 @@
     habitStats: habitStats,
     weeklyProgress: weeklyProgress,
     habitGrid: habitGrid,
+    amountAverage: amountAverage,
     insights: insights,
     dailySeries: dailySeries,
     dayState: dayState,

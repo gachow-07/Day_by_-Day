@@ -423,7 +423,7 @@
     label.appendChild(text);
     li.appendChild(label);
     if (habit) {
-      var timedGoal = !!entry.minutes;
+      var timedGoal = !!entry.amount;
       label.classList.add(timedGoal ? 'has-log' : 'has-more');
       var more = el('button', timedGoal ? 'goal-more goal-log' : 'goal-more');
       more.type = 'button';
@@ -435,7 +435,7 @@
       if (timedGoal) {
         more.appendChild(icon('plus', 16));
         more.appendChild(el('span', '', 'Log'));
-        more.setAttribute('aria-label', 'Log time for ' + entry.name);
+        more.setAttribute('aria-label', (entry.amount.unit === 'min' ? 'Log time for ' : 'Log water for ') + entry.name);
       } else {
         more.appendChild(icon('ellipsis', 18));
         more.setAttribute('aria-label', 'More for ' + entry.name);
@@ -449,7 +449,8 @@
   /* ---------------- Goal menu: time, partly done, workouts ---------------- */
 
   var menuFor = null; // goal id the menu is open for
-  var LOG_AMOUNTS = [15, 30, 60, 120];
+  var LOG_AMOUNTS = { min: [15, 30, 60, 120], ml: [250, 500, 750, 1000], oz: [8, 12, 16, 24] };
+  var WATER_DEFAULTS = { ml: 2000, oz: 64 };
 
   /** 90 → "1 h 30 min", 45 → "45 min", 120 → "2 h". */
   function formatDuration(minutes) {
@@ -457,6 +458,14 @@
     var m = minutes % 60;
     if (!h) return m + ' min';
     return h + ' h' + (m ? ' ' + m + ' min' : '');
+  }
+
+  /** An amount in its unit: "1 h 30 min", "750 ml", "1.5 L", "16 oz". */
+  function formatAmount(value, unit) {
+    if (unit === 'min') return formatDuration(value);
+    if (unit === 'oz') return value + ' oz';
+    if (value >= 1000) return (Math.round(value / 10) / 100) + ' L';
+    return value + ' ml';
   }
 
   function upcomingLabel(u, k) {
@@ -500,22 +509,23 @@
     $('goal-menu-title').textContent = entry.name;
     var sub = [];
 
-    if (entry.minutes) {
-      var logged = core.loggedMinutes(rec, id);
-      sub.push((logged ? formatDuration(logged) : 'Nothing') + ' of ' + formatDuration(entry.minutes) + ' today');
+    if (entry.amount) {
+      var unit = entry.amount.unit;
+      var logged = core.loggedAmount(rec, id);
+      sub.push((logged ? formatAmount(logged, unit) : 'Nothing') + ' of ' + formatAmount(entry.amount.goal, unit) + ' today');
       var chips = el('div', 'menu-chips');
       chips.setAttribute('role', 'group');
-      chips.setAttribute('aria-label', 'Log time');
-      LOG_AMOUNTS.forEach(function (m) {
-        var b = menuButton('menu-item menu-chip', 'log', '+' + formatDuration(m));
-        b.dataset.minutes = String(m);
-        b.setAttribute('aria-label', 'Log ' + formatDuration(m));
+      chips.setAttribute('aria-label', unit === 'min' ? 'Log time' : 'Log water');
+      LOG_AMOUNTS[unit].forEach(function (m) {
+        var b = menuButton('menu-item menu-chip', 'log', '+' + formatAmount(m, unit));
+        b.dataset.amount = String(m);
+        b.setAttribute('aria-label', 'Log ' + formatAmount(m, unit));
         chips.appendChild(b);
       });
       items.appendChild(chips);
       items.appendChild(menuButton('menu-item', 'log-custom', 'Other amount…'));
       var list = rec.logs && rec.logs[id];
-      if (list && list.length) items.appendChild(menuButton('menu-item', 'undo', 'Undo last', formatDuration(list[list.length - 1])));
+      if (list && list.length) items.appendChild(menuButton('menu-item', 'undo', 'Undo last', formatAmount(list[list.length - 1], unit)));
     } else {
       var isPartial = !!(rec.partial && rec.partial.indexOf(id) >= 0);
       var p = menuButton('menu-item', 'partial', 'Partly done', isPartial ? 'Tap to clear' : 'Counts as half');
@@ -604,14 +614,14 @@
     if (action === 'log-custom') { openLogDialog(id); return; }
     checkForNewDay();
     if (holdForAccount()) return;
-    if (action === 'log') { logMinutes(id, Number(item.dataset.minutes)); return; }
+    if (action === 'log') { logValue(id, Number(item.dataset.amount)); return; }
     if (action === 'undo') {
       var u = core.undoLog(state, id, today);
       if (!u.ok) { announce(u.message); return; }
       if (commit(u.state)) {
         var e = todayEntry(id);
-        announce('Removed ' + formatDuration(u.removed) + '. ' + progressText(e) + '.');
-        showToast('Removed ' + formatDuration(u.removed) + ' from ' + e.name + '.');
+        announce('Removed ' + formatAmount(u.removed, e.amount.unit) + '. ' + progressText(e) + '.');
+        showToast('Removed ' + formatAmount(u.removed, e.amount.unit) + ' from ' + e.name + '.');
       }
       focusGoalButton(id);
       return;
@@ -638,13 +648,13 @@
   }
 
   function progressText(entry) {
-    var logged = core.loggedMinutes(state.days[today], entry.id);
-    return formatDuration(logged) + ' of ' + formatDuration(entry.minutes);
+    var logged = core.loggedAmount(state.days[today], entry.id);
+    return formatAmount(logged, entry.amount.unit) + ' of ' + formatAmount(entry.amount.goal, entry.amount.unit);
   }
 
-  /** Log time for a timed goal and say how it's going. Returns true when saved. */
-  function logMinutes(id, minutes) {
-    var r = core.logTime(state, id, minutes, today);
+  /** Log an amount (minutes, ml or oz) for a goal and say how it's going. Returns true when saved. */
+  function logValue(id, value) {
+    var r = core.logAmount(state, id, value, today);
     if (!r.ok) { announce(r.message); return false; }
     var wasDone = state.days[today].done.indexOf(id) >= 0;
     if (!commit(r.state)) return false;
@@ -657,13 +667,14 @@
       row.classList.add('just-done');
     }
     var s = core.recordSummary(state.days[today]);
+    var amt = formatAmount(value, r.unit);
     if (r.lockedIn && reached) {
-      announce('Logged ' + formatDuration(minutes) + '. ' + entry.name + ' done, and the day is locked in.');
+      announce('Logged ' + amt + '. ' + entry.name + ' done, and the day is locked in.');
     } else {
-      announce('Logged ' + formatDuration(minutes) + '. ' + progressText(entry) + (reached ? '. ' + entry.name + ' done.' : '.') +
+      announce('Logged ' + amt + '. ' + progressText(entry) + (reached ? '. ' + entry.name + ' done.' : '.') +
         (reached && s.total ? ' ' + s.completed + ' of ' + s.total + ' goals done today.' : ''));
     }
-    showToast(reached ? entry.name + ' done: ' + formatDuration(r.logged) + '.' : '+' + formatDuration(minutes) + ' · ' + progressText(entry));
+    showToast(reached ? entry.name + ' done: ' + formatAmount(r.logged, r.unit) + '.' : '+' + amt + ' · ' + progressText(entry));
     focusGoalButton(id);
     return true;
   }
@@ -674,16 +685,27 @@
 
   function openLogDialog(id) {
     var entry = todayEntry(id);
-    if (!entry || !entry.minutes) return;
+    if (!entry || !entry.amount) return;
     loggingId = id;
-    $('log-title').textContent = 'Log time for ' + entry.name;
+    var time = entry.amount.unit === 'min';
+    $('log-title').textContent = (time ? 'Log time for ' : 'Log water for ') + entry.name;
     $('log-sub').textContent = progressText(entry) + ' so far.';
+    $('log-time-fields').hidden = !time;
+    $('log-water-fields').hidden = time;
     $('log-hours').value = '0';
     $('log-mins').value = '30';
+    $('log-value').value = String(LOG_AMOUNTS[entry.amount.unit][0]);
+    $('log-unit').textContent = entry.amount.unit === 'oz' ? 'fl oz' : 'ml';
+    $('log-save').textContent = time ? 'Log time' : 'Log water';
     $('log-error').hidden = true;
     dialogOpeners['log-dialog'] = $('goal-more-' + id);
-    openDialog('log-dialog', $('log-mins'));
+    openDialog('log-dialog', time ? $('log-mins') : $('log-value'));
     dialogOpeners['log-dialog'] = $('goal-more-' + id);
+  }
+
+  function wholeNumber(text) {
+    var t = String(text).trim();
+    return /^\d+$/.test(t) ? Number(t) : NaN;
   }
 
   function readDuration(hoursEl, minsEl) {
@@ -695,22 +717,24 @@
 
   function onLogSubmit(event) {
     event.preventDefault();
-    var minutes = readDuration($('log-hours'), $('log-mins'));
-    var error = !(minutes > 0) ? 'Enter how long, like 0 h 30 min.' : '';
+    var entry = todayEntry(loggingId);
+    var time = !entry || entry.amount.unit === 'min';
+    var value = time ? readDuration($('log-hours'), $('log-mins')) : wholeNumber($('log-value').value);
+    var error = !(value > 0) ? (time ? 'Enter how long, like 0 h 30 min.' : 'Enter how much you drank, like 250.') : '';
     if (!error) {
       checkForNewDay();
       if (holdForAccount()) { closeDialog('log-dialog'); return; }
-      var r = core.logTime(state, loggingId, minutes, today);
+      var r = core.logAmount(state, loggingId, value, today);
       if (!r.ok) error = r.message;
     }
     if (error) {
       $('log-error').textContent = error;
       $('log-error').hidden = false;
-      $('log-mins').focus();
+      (time ? $('log-mins') : $('log-value')).focus();
       return;
     }
     closeDialog('log-dialog');
-    logMinutes(loggingId, minutes);
+    logValue(loggingId, value);
   }
 
   var toastTimer = null;
@@ -725,9 +749,10 @@
   function goalMeta(entry, done, rec) {
     var habit = core.findHabit(state, entry.id);
     var parts = [];
-    if (entry.minutes) {
-      var logged = rec ? core.loggedMinutes(rec, entry.id) : 0;
-      parts.push(logged ? formatDuration(logged) + ' of ' + formatDuration(entry.minutes) : formatDuration(entry.minutes));
+    if (entry.amount) {
+      var logged = rec ? core.loggedAmount(rec, entry.id) : 0;
+      var u = entry.amount.unit;
+      parts.push(logged ? formatAmount(logged, u) + ' of ' + formatAmount(entry.amount.goal, u) : formatAmount(entry.amount.goal, u) + (u === 'min' ? '' : ' today'));
     } else if (rec && rec.partial && rec.partial.indexOf(entry.id) >= 0) {
       parts.push('Partly done');
     }
@@ -891,7 +916,7 @@
     var s = core.recordSummary(state.days[today]);
     var name = box.parentNode.querySelector('.goal-name').textContent;
     var tEntry = todayEntry(box.dataset.habitId);
-    if (tEntry && tEntry.minutes) name += ' (' + progressText(tEntry) + ')';
+    if (tEntry && tEntry.amount) name += ' (' + progressText(tEntry) + ')';
     if (r.lockedIn && box.checked) {
       announce('Day locked in. All ' + plural(s.total, 'goal') + ' done. Locked-in streak: ' + plural(stats.currentStreak(state, today), 'day') + '.');
     } else {
@@ -989,7 +1014,7 @@
 
   function goalSub(h) {
     var parts = [scheduleText(h.schedule)];
-    if (h.minutes) parts.push(formatDuration(h.minutes) + ' a day');
+    if (h.amount) parts.push(formatAmount(h.amount.goal, h.amount.unit) + (h.amount.unit === 'min' ? ' a day' : ' of water a day'));
     if (h.split) parts.push(h.split.workouts.length + '-workout split');
     if (h.reminder) parts.push('Reminder at ' + formatTime(h.reminder));
     if (h.status === 'paused') parts.unshift('Paused');
@@ -1251,7 +1276,9 @@
     $('gf-times-wrap').hidden = type !== 'weekly';
     $('gf-remind-wrap').hidden = !$('gf-remind').checked;
     $('gf-split-wrap').hidden = !$('gf-split').checked;
-    $('gf-duration-wrap').hidden = document.querySelector('input[name="gf-track"]:checked').value !== 'time';
+    var track = document.querySelector('input[name="gf-track"]:checked').value;
+    $('gf-duration-wrap').hidden = track !== 'time';
+    $('gf-water-wrap').hidden = track !== 'water';
   }
 
   function formWorkouts() {
@@ -1318,10 +1345,14 @@
     $('gf-remind').disabled = !plans.can('reminders');
     $('gf-time').value = h && h.reminder ? h.reminder : '09:00';
     $('gf-remind-hint').textContent = reminderHint();
-    var timedGoal = !!(h && h.minutes);
-    document.querySelector('input[name="gf-track"][value="' + (timedGoal ? 'time' : 'check') + '"]').checked = true;
-    $('gf-dur-h').value = String(timedGoal ? Math.floor(h.minutes / 60) : 1);
-    $('gf-dur-m').value = String(timedGoal ? h.minutes % 60 : 0);
+    var am = h && h.amount;
+    var track = !am ? 'check' : am.unit === 'min' ? 'time' : 'water';
+    document.querySelector('input[name="gf-track"][value="' + track + '"]').checked = true;
+    $('gf-dur-h').value = String(track === 'time' ? Math.floor(am.goal / 60) : 1);
+    $('gf-dur-m').value = String(track === 'time' ? am.goal % 60 : 0);
+    $('gf-water-unit').value = track === 'water' ? am.unit : (navigator.language === 'en-US' ? 'oz' : 'ml');
+    $('gf-water-goal').value = String(track === 'water' ? am.goal : WATER_DEFAULTS[$('gf-water-unit').value]);
+    $('gf-water-unit').dataset.unit = $('gf-water-unit').value;
     $('gf-track-error').hidden = true;
     $('gf-split').checked = !!(h && h.split);
     $('gf-workouts').value = h && h.split ? h.split.workouts.join('\n') : '';
@@ -1369,8 +1400,38 @@
       schedule: schedule,
       reminder: $('gf-remind').checked ? ($('gf-time').value || null) : null,
       split: $('gf-split').checked ? { workouts: formWorkouts(), current: Number($('gf-next').value) || 0 } : null,
-      minutes: document.querySelector('input[name="gf-track"]:checked').value === 'time' ? readDuration($('gf-dur-h'), $('gf-dur-m')) : null
+      amount: readAmountField()
     };
+  }
+
+  function readAmountField() {
+    var track = document.querySelector('input[name="gf-track"]:checked').value;
+    if (track === 'time') return { unit: 'min', goal: readDuration($('gf-dur-h'), $('gf-dur-m')) };
+    if (track === 'water') return { unit: $('gf-water-unit').value, goal: wholeNumber($('gf-water-goal').value) };
+    return null;
+  }
+
+  /** Choosing Water on a new goal fills in a name, icon and colour if they're empty. */
+  function onTrackWater() {
+    if (!$('gf-name').value.trim()) $('gf-name').value = 'Drink water';
+    var iconNone = document.querySelector('input[name="gf-icon"][value=""]');
+    if (iconNone && iconNone.checked) document.querySelector('input[name="gf-icon"][value="droplet"]').checked = true;
+    var colorNone = document.querySelector('input[name="gf-color"][value=""]');
+    if (colorNone && colorNone.checked) document.querySelector('input[name="gf-color"][value="sky"]').checked = true;
+  }
+
+  /** Switching ml/oz converts the goal typed so far. */
+  function onWaterUnit() {
+    var sel = $('gf-water-unit');
+    var from = sel.dataset.unit;
+    var to = sel.value;
+    var v = wholeNumber($('gf-water-goal').value);
+    if (from && from !== to && v > 0) {
+      $('gf-water-goal').value = String(to === 'oz' ? Math.round(v / 29.5735) : Math.round(v * 29.5735 / 50) * 50);
+    } else if (!(v > 0)) {
+      $('gf-water-goal').value = String(WATER_DEFAULTS[to]);
+    }
+    sel.dataset.unit = to;
   }
 
   function onGoalFormSubmit(event) {
@@ -1396,15 +1457,15 @@
     if (nameError) { $('gf-name').focus(); return; }
     if (sch.error) { $('gf-schedule').querySelector('input:checked').focus(); return; }
     if (sp.error) { $('gf-workouts').focus(); return; }
-    var minsError = v.minutes !== null && !(v.minutes >= core.MIN_GOAL_MINUTES && v.minutes <= 1440) ? 'Set a time goal between 5 minutes and 24 hours.' : '';
-    $('gf-track-error').textContent = minsError;
-    $('gf-track-error').hidden = !minsError;
-    if (minsError) { $('gf-dur-h').focus(); return; }
+    var amountError = v.amount ? (isNaN(v.amount.goal) ? (v.amount.unit === 'min' ? 'Enter a time, like 1 h 30 min.' : 'Enter a whole number for your water goal.') : core.cleanAmount(v.amount).error || '') : '';
+    $('gf-track-error').textContent = amountError;
+    $('gf-track-error').hidden = !amountError;
+    if (amountError) { (v.amount.unit === 'min' ? $('gf-dur-h') : $('gf-water-goal')).focus(); return; }
     var existing = editingId && core.findHabit(state, editingId);
     if (existing && !v.split && !existing.split) delete v.split;
     var r = editingId
       ? core.updateHabit(state, editingId, v, today)
-      : core.addHabit(state, v.name, today, { icon: v.icon, color: v.color, schedule: v.schedule, reminder: v.reminder, split: v.split, minutes: v.minutes });
+      : core.addHabit(state, v.name, today, { icon: v.icon, color: v.color, schedule: v.schedule, reminder: v.reminder, split: v.split, amount: v.amount });
     if (!r.ok) {
       $('gf-error').textContent = r.message;
       $('gf-error').hidden = false;
@@ -1634,7 +1695,7 @@
       var text = el('span');
       text.appendChild(document.createTextNode(item.name));
       if (item.workout) text.appendChild(el('span', 'detail-flex', ' · ' + item.workout));
-      if (item.minutes) text.appendChild(el('span', 'detail-flex', ' · ' + formatDuration(item.logged) + ' of ' + formatDuration(item.minutes)));
+      if (item.amount) text.appendChild(el('span', 'detail-flex', ' · ' + formatAmount(item.logged, item.amount.unit) + ' of ' + formatAmount(item.amount.goal, item.amount.unit)));
       else if (part) text.appendChild(el('span', 'detail-flex', ' · partly done'));
       if (item.flexible) text.appendChild(el('span', 'detail-flex', ' · weekly'));
       text.appendChild(el('span', 'visually-hidden', item.done ? ' (done)' : part ? ' (partly done)' : ' (not done)'));
@@ -1800,6 +1861,8 @@
       if (st) parts.push('best ' + st.bestStreak);
       if (st && st.periods) parts.push(st.completionRate + '%' + (unit === 'week' ? ' of weeks' : ''));
       if (st && st.unit === 'week' && st.thisWeek) parts.push(st.thisWeek.count + ' of ' + st.thisWeek.target + ' this week');
+      var avg = stats.amountAverage(state, h.id, today, 30);
+      if (avg) parts.push('avg ' + formatAmount(avg.average, avg.unit) + ' a day');
       head.appendChild(el('p', 'gh-meta', parts.join(' · ')));
       li.appendChild(head);
 
@@ -2589,6 +2652,8 @@
     $('goal-form').addEventListener('submit', onGoalFormSubmit);
     $('goal-form').addEventListener('change', function (e) {
       if (e.target.name === 'gf-schedule' || e.target.name === 'gf-track' || e.target.id === 'gf-remind' || e.target.id === 'gf-split') syncScheduleFields();
+      if (e.target.name === 'gf-track' && e.target.value === 'water' && !editingId) onTrackWater();
+      if (e.target.id === 'gf-water-unit') onWaterUnit();
       if (e.target.name === 'gf-schedule' || e.target.name === 'gf-days' || e.target.closest('#gf-days')) syncSplitChoices();
       if (e.target.id === 'gf-next') $('gf-next').dataset.name = formWorkouts()[Number($('gf-next').value)] || '';
       if (e.target.id === 'gf-split' && e.target.checked && !formWorkouts().length) $('gf-workouts').focus();

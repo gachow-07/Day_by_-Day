@@ -62,14 +62,15 @@ The app has three sections: a left sidebar on screens 768px and wider, and a bot
 - Removing a goal that has history **archives** it: it leaves today's list but stays in history and Stats, and can be restored. A goal with no history yet (for example a typo added today) is deleted outright.
 - Up to 20 active goals (the planned Free plan allows 5; see Plans).
 
-### Partly done and time goals
+### Partly done, time and water goals
 
 Not every day is all or nothing:
 
 - **Partly done.** Open a goal's **⋯** menu and choose **Partly done**. Its box fills halfway. Ticking the goal later makes it fully done.
 - **Time goals.** In the goal form, set **Track** to **Time, logged in pieces** and give a daily goal, such as 2 h for "Study". The goal then shows a **Log** button: add **+15 min**, **+30 min**, **+1 h** or **+2 h**, or **Other amount…** for anything else. **Undo last** takes back the most recent entry. The box fills as time adds up, and the goal is done when the entries reach the goal. Ticking the box logs whatever is left; unticking takes back the latest entries.
+- **Water.** Set **Track** to **Water** and choose a daily goal in ml or fl oz (2000 ml or 64 fl oz to start). A new goal fills in "Drink water", a droplet and a blue colour if those are still empty. **Log** adds **+250 ml**, **+500 ml**, **+750 ml** or **+1 L** (or 8, 12, 16 or 24 fl oz), or any amount. The box fills blue as you drink, and the Goals history on Stats shows your average a day over the last 30 days. Switching a goal between ml and fl oz converts what you've logged today.
 
-Partial progress never makes a day Locked In or continues a streak, but it does count toward completion rates: a partly done goal counts as half, and a time goal counts by the share logged (1 h of 2 h is half). A day with only partial progress shows as **Partial** (yellow) on the calendar rather than missed, and the Goals history grid shows it as a half-filled square.
+Partial progress never makes a day Locked In or continues a streak, but it does count toward completion rates: a partly done goal counts as half, and time and water goals count by the share logged (1 h of 2 h, or 1 L of 2 L, is half). A day with only partial progress shows as **Partial** (yellow) on the calendar rather than missed, and the Goals history grid shows it as a half-filled square.
 
 ### Workout splits
 
@@ -111,6 +112,7 @@ The tests in `tests/` cover:
 - migrating older saved data (schema 3, the old challenge format and the original prototype) with identical stats, and export/import validation
 - schedules (weekdays, selected days, times per week), neutral unscheduled days, flexible goals not affecting Locked In, weekly goal stats, drag reordering, daily focus and week start
 - insights and their data minimums: week-over-week change, strongest and weakest weekday, biggest opportunity
+- water goals: logging, units and validation, ml/oz conversion, the daily average, and the v6 → 7 migration
 - partly done and time goals: logging in pieces, reaching the goal, undo, ticking and unticking a timed goal, partial credit in completion rates without Locked In or streaks, calendar and grid states, switching a goal to or from timed, validation, the v5 → 6 migration, and export/import
 - workout splits: rotation on due days only and over many weeks, times-per-week splits, swapping a workout (and swapping back), re-anchoring when the schedule changes, validation, the v4 → 5 migration, and workouts in day details and exports
 - plan entitlements (Early access grants everything; Free and Pro limits)
@@ -163,11 +165,11 @@ If you are not signed in, everything lives in this browser only. Clearing site d
 
 ### Saved-data format and migrations
 
-Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaVersion` field. The current version is **6**:
+Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaVersion` field. The current version is **7**:
 
 ```js
 {
-  schemaVersion: 6,
+  schemaVersion: 7,
   habits: [{
     id: 'h1', name: 'Workout', createdOn: '2026-09-01', status: 'active', archivedOn: null,
     icon: 'dumbbell',              // Lucide icon name or null
@@ -178,15 +180,17 @@ Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaV
                                    // or null. The day the goal is due on `start` gets workouts[offset],
                                    // and each later due day (or, for times-per-week goals, each day
                                    // after one it was done) the next workout.
-    minutes: 120                   // a daily time goal (5-1440) logged in pieces, or null
+    amount: { unit: 'ml', goal: 2000 }
+                                   // or null: a daily amount logged in pieces. unit is 'min'
+                                   // (time, 5-1440), 'ml' (water, 100-10000) or 'oz' (4-340).
   }],
   days: {
     '2026-09-01': { habits: [{ id: 'h1', name: 'Workout', workout: 'Legs' }, { id: 'h2', name: 'Run', flex: true, target: 3 },
-                             { id: 'h3', name: 'Study', minutes: 120 }, { id: 'h4', name: 'Read' }],
+                             { id: 'h3', name: 'Study', amount: { unit: 'min', goal: 120 } }, { id: 'h4', name: 'Read' }],
                     done: ['h1'], logs: { h3: [60, 30] }, partial: ['h4'] }
     // one record per date: the goals shown that day, with their names then, and which were done.
     // flex entries (times per week) don't count toward Locked In. workout is that day's split workout.
-    // logs are a timed goal's entries (it's done when they reach its minutes); partial lists
+    // logs are an amount goal's entries in its unit (it's done when they reach the goal); partial lists
     // untimed goals marked partly done. Both count toward completion rates, never toward Locked In.
   },
   focus: { '2026-09-01': 'Finish the essay draft' },   // optional daily intention
@@ -196,6 +200,7 @@ Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaV
 
 Streaks and all statistics are calculated from `days` (see `js/stats.js`); no counters are stored.
 
+- **Version 6 → 7:** time goals become amount goals: `minutes: n` turns into `amount: { unit: 'min', goal: n }` on goals and daily records (and `minutes: null` into `amount: null`), so water can use the same logging. Logs and every statistic are unchanged. The original is first copied to `day-by-day.backup.v6.<timestamp>`.
 - **Version 5 → 6:** goals gain `minutes: null` (no time goal). Records are unchanged; `logs` and `partial` are optional. The original is first copied to `day-by-day.backup.v5.<timestamp>`.
 - **Version 4 → 5:** goals gain `split: null` (no workout split). Nothing else changes. The original is first copied to `day-by-day.backup.v4.<timestamp>`.
 - **Version 3 → 4:** existing goals become "every day" goals with no icon, colour or reminder, and daily records are untouched, so every streak and statistic is exactly the same (a test checks this). The original is first copied to `day-by-day.backup.v3.<timestamp>`. An account still holding version 3 data is converted when it's downloaded and saved back as version 4 on your next change. A device still running an older app version is told to reload.
