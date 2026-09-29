@@ -21,7 +21,7 @@ test('week-over-week change needs enough days in both weeks', () => {
   const r = stats.insights(s, core.addDays(START, 6));
   assert.equal(r.needed, 0);
   assert.equal(r.items[0].id, 'week');
-  assert.match(r.items[0].text, /100% of your goals in the past 7 days/);
+  assert.match(r.items[0].text, /100% of goals done this week/);
 });
 
 test('week-over-week change is reported in points, up or down', () => {
@@ -34,7 +34,7 @@ test('week-over-week change is reported in points, up or down', () => {
   assert.equal(wow.lastWeek.rate, Math.round((12 / 14) * 100));
   assert.equal(wow.change, 100 - 86);
   const item = stats.insights(s, today).items.find((i) => i.id === 'trend');
-  assert.match(item.text, /100% of your goals in the past 7 days, up 14 points from the week before/);
+  assert.match(item.text, /100% of goals done this week, up 14 points on last week/);
   assert.equal(item.tone, 'up');
 });
 
@@ -50,7 +50,7 @@ test('biggest opportunity names a goal only when it clearly lags', () => {
   const opp = r.items.find((i) => i.id === 'opportunity');
   assert.ok(opp, JSON.stringify(r.items));
   // 7 of 13 due days: today (not ticked yet) isn't counted because it isn't over.
-  assert.match(opp.text, /^Read is your biggest opportunity: done on 54% of the days it was due/);
+  assert.match(opp.text, /^Read has the most room to grow: 54% this month/);
   // When every goal is done evenly, no goal is singled out.
   const even = play(withHabits(START, ['A', 'B']), START, '✓'.repeat(14));
   assert.equal(stats.insights(even, core.addDays(START, 13)).items.some((i) => i.id === 'opportunity'), false);
@@ -66,7 +66,7 @@ test('strongest and weakest weekday need two weeks and a real difference', () =>
   assert.equal(wd.weakest.dow, 5, 'Friday');
   assert.equal(wd.weakest.rate, 50);
   const text = stats.insights(s, today).items.find((i) => i.id === 'weekday').text;
-  assert.match(text, /is your most consistent day \(100%\); Friday is your hardest \(50%\)/);
+  assert.match(text, /s are your most consistent \(100%\)\. Fridays are hardest \(50%\)/);
   // Perfectly even history: no weekday insight.
   const even = play(withHabits(START), START, '✓'.repeat(21));
   assert.equal(stats.weekdayStrength(even, today).available, false);
@@ -77,7 +77,7 @@ test('strongest and weakest weekday need two weeks and a real difference', () =>
 test('insight day names can be localised', () => {
   const s = play(withHabits(START, ['A', 'B']), START, ('✓✓✓✓½✓✓').repeat(3));
   const r = stats.insights(s, core.addDays(START, 20), (d) => 'D' + d);
-  assert.match(r.items.find((i) => i.id === 'weekday').text, /D5 is your hardest/);
+  assert.match(r.items.find((i) => i.id === 'weekday').text, /D5s are hardest/);
 });
 
 test('week start helper', () => {

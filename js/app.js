@@ -345,7 +345,6 @@
 
   /* ---------------- Today ---------------- */
 
-  var RING_C = 2 * Math.PI * 52;
 
   function formatTime(hhmm) {
     var p = hhmm.split(':').map(Number);
@@ -382,10 +381,10 @@
 
   function goalChip(habit, small) {
     if (!habit || (!habit.icon && !habit.color)) return null;
-    var chip = el('span', 'goal-chip' + (small ? ' sm' : ''));
+    var chip = el('span', 'goal-chip' + (small ? ' sm' : '') + (habit.icon ? '' : ' is-dot'));
     chip.setAttribute('aria-hidden', 'true');
     if (habit.color) chip.dataset.color = habit.color;
-    chip.appendChild(icon(habit.icon || 'target', small ? 14 : 18));
+    if (habit.icon) chip.appendChild(icon(habit.icon, small ? 16 : 18));
     return chip;
   }
 
@@ -407,15 +406,16 @@
     if (chip) label.appendChild(chip);
     var text = el('span', 'goal-text');
     text.appendChild(el('span', 'goal-name', entry.name));
+    var meta = el('span', 'goal-meta');
     if (entry.workout) {
       var workout = el('span', 'goal-workout');
-      workout.appendChild(icon('dumbbell', 14));
       workout.appendChild(el('span', 'visually-hidden', 'Today’s workout: '));
       workout.appendChild(document.createTextNode(entry.workout));
-      text.appendChild(workout);
+      meta.appendChild(workout);
     }
-    var meta = el('span', 'goal-meta');
-    meta.dataset.metaFor = entry.id;
+    var rest = el('span', 'goal-meta-rest');
+    rest.dataset.metaFor = entry.id;
+    meta.appendChild(rest);
     text.appendChild(meta);
     label.appendChild(text);
     li.appendChild(label);
@@ -454,7 +454,7 @@
     closeWorkoutMenu(false);
     menuFor = id;
     var menu = $('workout-menu');
-    $('workout-menu-sub').textContent = 'Today: ' + entry.workout + '. Pick what you did and the two workouts swap days.';
+    $('workout-menu-sub').textContent = 'Today: ' + entry.workout + '. Pick what you did and they’ll swap days.';
     var items = $('workout-menu-items');
     items.textContent = '';
     var seen = {};
@@ -558,9 +558,9 @@
     if (entry.flex) {
       var count = stats.weeklyProgress(state, today, weekStart(), entry.id);
       var met = count >= entry.target;
-      return count + ' of ' + entry.target + ' this week' + (met ? ' · target met' : '');
+      return count + ' of ' + entry.target + ' this week' + (met ? ' · done' : '');
     }
-    if (habit && habit.reminder && !done) return 'Reminder at ' + formatTime(habit.reminder);
+    if (habit && habit.reminder && !done) return formatTime(habit.reminder);
     return '';
   }
 
@@ -580,7 +580,7 @@
 
     // Streak
     $('streak-count').textContent = String(sum.currentStreak);
-    $('streak-unit').textContent = sum.currentStreak === 1 ? 'day' : 'days';
+    $('streak-unit').textContent = 'day streak';
     $('best-streak').textContent = plural(sum.bestStreak, 'day');
 
     var rec = todayRecord();
@@ -612,6 +612,7 @@
       var meta = document.querySelector('[data-meta-for="' + id + '"]');
       meta.textContent = entry ? goalMeta(entry, isDone) : '';
       meta.hidden = !meta.textContent;
+      meta.parentNode.hidden = meta.hidden && !entry.workout;
     });
 
     // Empty state for days with nothing due
@@ -619,25 +620,23 @@
     $('goals-empty').hidden = !nothingDue;
     if (nothingDue) {
       $('goals-empty-text').textContent = !core.activeHabits(state).length
-        ? 'All your goals are paused, so nothing is due today. Days with nothing due don’t count toward or against your streak.'
+        ? 'Every goal is paused, so nothing is due today.'
         : flexible.length
-          ? 'No everyday goals are due today, so today won’t affect your locked-in streak. Your times-per-week goals are below.'
-          : 'Nothing is scheduled for today, so it won’t affect your locked-in streak.';
+          ? 'Nothing daily today. Your weekly goals are below.'
+          : 'Nothing scheduled today. Your streak is safe.';
     }
 
-    // Hero ring, progress and message
+    // Hero: today's tile fills as goals are done; the week strip shows the days before
     var hero = $('hero');
     var ratio = s.total ? s.completed / s.total : 0;
-    $('ring-fill').style.strokeDashoffset = String(RING_C * (1 - ratio));
-    $('ring-fill').style.opacity = ratio > 0 ? '1' : '0';
-    $('ring-count').textContent = s.total ? s.completed + '/' + s.total : '—';
     hero.classList.toggle('is-locked', s.lockedIn);
-    var bar = $('today-progress');
-    bar.hidden = !s.total;
-    bar.setAttribute('aria-valuemax', String(s.total));
-    bar.setAttribute('aria-valuenow', String(s.completed));
-    bar.setAttribute('aria-valuetext', s.completed + ' of ' + s.total + ' goals done');
-    $('today-progress-bar').style.width = (ratio * 100) + '%';
+    var tile = $('today-progress');
+    tile.setAttribute('aria-valuemax', String(s.total));
+    tile.setAttribute('aria-valuenow', String(s.completed));
+    tile.setAttribute('aria-valuetext', s.total ? s.completed + ' of ' + s.total + ' goals done' : 'Nothing due today');
+    $('today-progress-bar').style.height = (ratio * 100) + '%';
+    $('today-count').textContent = s.total ? s.completed + '/' + s.total : '–';
+    renderWeekStrip();
     $('hero-status').textContent = heroMessage(s, sum);
     if (wasLockedIn === false && s.lockedIn) celebrate();
     wasLockedIn = s.lockedIn;
@@ -649,12 +648,31 @@
   }
 
   function heroMessage(s, sum) {
-    if (!s.total) return 'Nothing is due today.';
-    if (s.lockedIn) return 'Day locked in. ' + (sum.currentStreak > 1 ? sum.currentStreak + ' days in a row.' : 'Your streak has started.');
+    if (!s.total) return 'Nothing due today.';
+    if (s.lockedIn) return 'Locked in. ' + (sum.currentStreak > 1 ? sum.currentStreak + ' days in a row.' : 'Your streak starts today.');
     var left = s.total - s.completed;
-    if (left === 1) return 'One more goal to lock in today.';
-    if (s.completed === 0) return 'Check off all ' + s.total + ' goals to lock in today.';
-    return left + ' more goals to lock in today.';
+    if (left === 1) return 'One more to lock in today.';
+    if (s.completed === 0) return s.total === 1 ? 'One goal to lock in today.' : 'Check off all ' + s.total + ' to lock in today.';
+    return left + ' more to lock in today.';
+  }
+
+  /** The six days before today as small tiles. */
+  function renderWeekStrip() {
+    var list = $('week-strip');
+    list.textContent = '';
+    for (var i = 6; i >= 1; i--) {
+      var d = core.addDays(today, -i);
+      var st = stats.dayState(state, d, today);
+      var li = el('li');
+      var t = el('span', 'day-tile is-' + st);
+      t.setAttribute('aria-hidden', 'true');
+      li.appendChild(t);
+      var label = el('span', 'week-label', formatDate(d, 'weekday'));
+      label.setAttribute('aria-hidden', 'true');
+      li.appendChild(label);
+      li.appendChild(el('span', 'visually-hidden', formatDate(d, 'dowLong') + ': ' + STATE_LABELS[st]));
+      list.appendChild(li);
+    }
   }
 
   function celebrate() {
@@ -789,7 +807,7 @@
 
   function goalSub(h) {
     var parts = [scheduleText(h.schedule)];
-    if (h.split) parts.push(plural(h.split.workouts.length, 'workout') + ' split');
+    if (h.split) parts.push(h.split.workouts.length + '-workout split');
     if (h.reminder) parts.push('Reminder at ' + formatTime(h.reminder));
     if (h.status === 'paused') parts.unshift('Paused');
     if (h.status === 'archived') parts = ['Archived ' + formatDate(h.archivedOn, 'short')];
@@ -1068,10 +1086,9 @@
   function reminderHint() {
     if (!plans.can('reminders')) return 'Reminders are part of Pro.';
     var on = readPref(NOTIFY_KEY, true);
-    if (!on) return 'Reminders are turned off in Settings → Notifications.';
-    if (!('Notification' in window)) return 'Reminders appear inside Day by Day while it’s open.';
-    if (Notification.permission !== 'granted') return 'Reminders appear inside Day by Day while it’s open. Allow notifications in Settings to also get a system notification.';
-    return 'You’ll get a notification at this time if the goal isn’t done yet and Day by Day is open.';
+    if (!on) return 'Reminders are off in Settings.';
+    if (!('Notification' in window) || Notification.permission !== 'granted') return 'Shown in Day by Day while it’s open.';
+    return 'You’ll get a notification if it isn’t done by then.';
   }
 
   function openGoalForm(id) {
@@ -1117,11 +1134,11 @@
       $('gf-pause').dataset.icon = '';
       $('gf-remove').textContent = history ? 'Archive goal' : 'Delete goal';
       $('gf-status-hint').textContent = (h.status === 'paused'
-        ? 'Paused goals aren’t due and don’t affect your streak. '
-        : 'Pause a goal for a break; it won’t be due until you resume it. ') +
+        ? 'Paused goals aren’t due. '
+        : 'Taking a break? Paused goals aren’t due. ') +
         (history
-          ? 'Archiving removes it from your list but keeps its ' + plural(history, 'day') + ' of history in Stats.'
-          : 'It has no history yet, so deleting removes it completely.');
+          ? 'Archiving keeps its ' + plural(history, 'day') + ' of history.'
+          : 'No history yet, so deleting removes it.');
     }
     openDialog('goal-form-dialog', $('gf-name'));
   }
@@ -1243,10 +1260,15 @@
     future: 'Upcoming'
   };
 
-  var INSIGHT_ICONS = { up: 'trending-up', down: 'trending-down', flat: 'minus', focus: 'target' };
 
   function dayLong(dow) {
     return formatDate(core.addDays('2026-09-06', dow), 'dowLong');
+  }
+
+  var NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+
+  function countWord(n) {
+    return NUMBER_WORDS[n] || String(n);
   }
 
   function renderStats() {
@@ -1255,39 +1277,40 @@
     var ins = stats.insights(state, today, dayLong);
     var wow = stats.weekOverWeek(state, today);
 
-    // Summary
-    $('stat-current').textContent = plural(sum.currentStreak, 'day');
+    // The streak leads; the rest is one row
+    $('stat-current').textContent = String(sum.currentStreak);
     $('stat-best').textContent = plural(sum.bestStreak, 'day');
-    $('stat-best-sub').textContent = sum.bestStreak && sum.bestStreak === sum.currentStreak ? 'You’re on your best run' : 'Your longest run so far';
     $('stat-rate').textContent = sum.totalTrackedDays ? sum.completionRate + '%' : '—';
     $('stat-total').textContent = String(sum.totalLockedInDays);
-    $('stat-total-sub').textContent = 'of ' + plural(sum.totalTrackedDays, 'tracked day');
+    $('stat-tracked').textContent = String(sum.totalTrackedDays);
     var trend = $('stat-trend');
     trend.textContent = '';
     trend.hidden = !wow.available;
     if (wow.available) {
       trend.className = 'delta ' + (wow.change > 0 ? 'is-up' : wow.change < 0 ? 'is-down' : '');
-      trend.appendChild(icon(wow.change > 0 ? 'trending-up' : wow.change < 0 ? 'trending-down' : 'minus', 14));
-      trend.appendChild(document.createTextNode((wow.change > 0 ? '+' : '') + wow.change + ' pts'));
-      trend.setAttribute('aria-label', (wow.change === 0 ? 'No change' : (wow.change > 0 ? 'Up ' : 'Down ') + Math.abs(wow.change) + ' points') + ' versus the previous 7 days');
-      $('stat-rate-sub').textContent = 'Past 7 days: ' + wow.thisWeek.rate + '%, vs ' + wow.lastWeek.rate + '% the week before';
-    } else {
-      $('stat-rate-sub').textContent = 'Goals done of goals due';
+      var arrow = el('span', '', wow.change > 0 ? '↑' : wow.change < 0 ? '↓' : '±');
+      arrow.setAttribute('aria-hidden', 'true');
+      trend.appendChild(arrow);
+      trend.appendChild(document.createTextNode(String(Math.abs(wow.change))));
+      trend.appendChild(el('span', 'visually-hidden', (wow.change === 0 ? ' points: no change' : wow.change > 0 ? ' points up' : ' points down') + ' on the week before'));
+      trend.dataset.tip = 'This week ' + wow.thisWeek.rate + '%, last week ' + wow.lastWeek.rate + '%';
     }
 
-    // Early data
+    // Early data: seven tiles, one per day checked in
     var early = $('early-card');
     early.hidden = ins.needed === 0 || !state.habits.length;
     if (!early.hidden) {
-      $('early-title').textContent = ins.needed === stats.MIN.patternDays
-        ? 'Your first weekly pattern is 7 days away'
-        : 'Complete ' + plural(ins.needed, 'more day') + ' to reveal your first weekly pattern';
-      $('early-text').textContent = 'After a week of check-ins, Stats shows how this week compares with the last, which goals need attention and which days are your strongest. You’ve tracked ' + plural(ins.trackedDays, 'day') + ' so far.';
-      $('early-progress').setAttribute('aria-valuenow', String(ins.trackedDays));
-      $('early-progress-bar').style.width = Math.min(100, (ins.trackedDays / stats.MIN.patternDays) * 100) + '%';
+      $('early-title').textContent = ins.trackedDays ? 'Your first week is taking shape' : 'Your first week starts today';
+      $('early-text').textContent = 'Check in for ' + (ins.needed === 1 ? 'one more day' : countWord(ins.needed) + ' more days') +
+        ' and we’ll show where you’re most consistent.';
+      var tiles = $('early-progress');
+      tiles.textContent = '';
+      for (var i = 0; i < stats.MIN.patternDays; i++) tiles.appendChild(el('li', i < ins.trackedDays ? 'is-filled' : ''));
+      tiles.setAttribute('aria-valuenow', String(ins.trackedDays));
+      tiles.setAttribute('aria-valuetext', plural(ins.trackedDays, 'day') + ' of ' + stats.MIN.patternDays);
     }
 
-    // Insights
+    // Insights, as sentences
     var card = $('insights-card');
     card.hidden = !ins.items.length || !plans.can('weeklyReview');
     $('share-week').hidden = !plans.can('sharing');
@@ -1295,16 +1318,15 @@
     list.textContent = '';
     ins.items.forEach(function (item) {
       var li = el('li');
-      var badge = iconSpan(INSIGHT_ICONS[item.tone] || 'info', 16, 'insight-icon is-' + item.tone);
-      badge.setAttribute('aria-hidden', 'true');
-      li.appendChild(badge);
+      var mark = el('span', 'insight-mark is-' + item.tone);
+      mark.setAttribute('aria-hidden', 'true');
+      li.appendChild(mark);
       li.appendChild(el('p', '', item.text));
       list.appendChild(li);
     });
 
     renderCalendar(sum);
     renderAnalytics(sum);
-    renderGoalStreaks();
   }
 
   /* Calendar */
@@ -1376,7 +1398,7 @@
     var d = stats.dayDetail(state, date, today);
     box.appendChild(el('p', 'detail-date', formatDate(date, 'long') + (date === today ? ' · Today' : '')));
     var sub = el('p', 'detail-sub');
-    if (d.total) sub.appendChild(document.createTextNode(d.completed + ' of ' + d.total + ' goals completed'));
+    if (d.total) sub.appendChild(document.createTextNode(d.completed + ' of ' + d.total + ' done'));
     var badge = el('span', 'detail-badge is-' + d.state, STATE_LABELS[d.state]);
     sub.appendChild(badge);
     box.appendChild(sub);
@@ -1387,7 +1409,7 @@
       box.appendChild(f);
     }
     if (!d.items.length) {
-      box.appendChild(el('p', 'detail-empty', 'No goals were due on this day, so it doesn’t count toward or against your streak.'));
+      box.appendChild(el('p', 'detail-empty', 'Nothing was due, so it doesn’t affect your streak.'));
       return;
     }
     var ul = el('ul', 'detail-list');
@@ -1397,7 +1419,7 @@
       var text = el('span');
       text.appendChild(document.createTextNode(item.name));
       if (item.workout) text.appendChild(el('span', 'detail-flex', ' · ' + item.workout));
-      if (item.flexible) text.appendChild(el('span', 'detail-flex', ' · weekly goal'));
+      if (item.flexible) text.appendChild(el('span', 'detail-flex', ' · weekly'));
       text.appendChild(el('span', 'visually-hidden', item.done ? ' (done)' : ' (not done)'));
       li.appendChild(text);
       ul.appendChild(li);
@@ -1406,27 +1428,36 @@
   }
 
   function renderDayPanel() {
-    var body = $('day-panel-body');
-    var inMonth = selectedDate && selectedDate.slice(0, 7) === calMonth.y + '-' + (calMonth.m < 10 ? '0' : '') + calMonth.m;
-    if (!inMonth) {
-      body.textContent = '';
-      body.appendChild(el('p', 'detail-date', 'Day details'));
-      body.appendChild(el('p', 'detail-empty', 'Select a day in the calendar to see which goals were done.'));
-      return;
-    }
-    renderDayDetail(body, selectedDate);
+    var panel = $('day-panel');
+    var month = calMonth.y + '-' + (calMonth.m < 10 ? '0' : '') + calMonth.m;
+    var show = !!(WIDE.matches && selectedDate && selectedDate.slice(0, 7) === month);
+    panel.hidden = !show;
+    $('calendar-layout').classList.toggle('has-panel', show);
+    if (show) renderDayDetail($('day-panel-body'), selectedDate);
+  }
+
+  function closeDayPanel() {
+    var date = selectedDate;
+    selectedDate = null;
+    renderCalendar(stats.summary(state, today));
+    var cell = date && document.querySelector('#cal-grid button[data-date="' + date + '"]');
+    if (cell) cell.focus();
   }
 
   function onCalendarClick(event) {
     var btn = event.target.closest('button[data-date]');
     if (!btn) return;
     var date = btn.dataset.date;
+    if (WIDE.matches && date === selectedDate) {
+      closeDayPanel();
+      return;
+    }
     selectedDate = date;
     renderCalendar(stats.summary(state, today));
     var again = document.querySelector('#cal-grid button[data-date="' + date + '"]');
     if (WIDE.matches) {
       if (again) again.focus();
-      announce(formatDate(date, 'day') + ' details shown beside the calendar.');
+      announce(formatDate(date, 'day') + ' details shown beside the calendar. Press Escape to close them.');
       return;
     }
     // Phones and tablets: a bottom sheet that doesn't push the page around.
@@ -1460,15 +1491,13 @@
     if (!wd.available) {
       var need = Math.max(0, stats.MIN.weekdayDays - wd.trackedDays);
       var empty = el('div', 'empty');
-      empty.appendChild(icon('calendar-days', 22));
       empty.appendChild(el('p', '', need
-        ? 'Track ' + plural(need, 'more day') + ' to see your strongest and weakest days of the week.'
-        : 'Your days of the week are about even so far. Once one stands out, it will show here.'));
+        ? 'Patterns appear after two weeks of check-ins.'
+        : 'Your weekdays are about even so far.'));
       box.appendChild(empty);
       return;
     }
     var order = weekStart() === 1 ? [1, 2, 3, 4, 5, 6, 0] : [0, 1, 2, 3, 4, 5, 6];
-    box.appendChild(el('p', 'caption', 'Completion rate for each day of the week over the last 12 weeks.'));
     var ul = el('ul', 'weekday-bars');
     ul.setAttribute('aria-label', 'Completion by weekday');
     order.forEach(function (dow) {
@@ -1499,10 +1528,6 @@
     return s.status === 'active' ? '' : s.status === 'paused' ? 'Paused' : 'Archived';
   }
 
-  function unitText(n, unit) {
-    return plural(n, unit);
-  }
-
   /* Goal history: one card per goal with a contribution grid (a dropdown) */
 
   var GH_KEY = 'day-by-day.goal-history-open';
@@ -1511,9 +1536,8 @@
   function goalHistoryWeeks() {
     var list = $('goal-history-list');
     var width = list.clientWidth || 320;
-    // Card padding (2 × 16) and 16px per week column (12px cell + 4px gap):
-    // as many weeks as fit, up to a year.
-    return Math.max(8, Math.min(53, Math.floor((width - 32 + 4) / 16)));
+    // 15px per week column (12px cell + 3px gap): as many weeks as fit, up to a year.
+    return Math.max(8, Math.min(53, Math.floor((width + 3) / 15)));
   }
 
   function renderGoalHistory() {
@@ -1528,7 +1552,7 @@
     var dueToday = rec ? rec.habits.filter(function (e) { return !e.flex; }) : [];
     var doneToday = dueToday.filter(function (e) { return rec.done.indexOf(e.id) >= 0; }).length;
     $('goal-history-summary').textContent = plural(goals.length, 'goal') +
-      (dueToday.length ? ' · ' + doneToday + ' of ' + dueToday.length + ' done today' : '');
+      (dueToday.length ? ' · ' + doneToday + ' of ' + dueToday.length + ' today' : '');
 
     var open = readPref(GH_KEY, false);
     $('goal-history-toggle').setAttribute('aria-expanded', String(open));
@@ -1536,7 +1560,7 @@
     if (!open) return;
 
     var weeks = goalHistoryWeeks();
-    $('gh-caption').textContent = 'The last ' + weeks + ' weeks, newest on the right. Each square is a day; each column is a week starting on ' + (weekStart() === 1 ? 'Monday' : 'Sunday') + '.';
+    $('gh-caption').textContent = 'Last ' + weeks + ' weeks';
     var statsById = {};
     stats.habitStats(state, today, weekStart()).forEach(function (st) { statsById[st.id] = st; });
     var list = $('goal-history-list');
@@ -1547,57 +1571,20 @@
       var li = el('li', 'gh-card');
       li.dataset.color = h.color || 'jade';
 
-      // Header: icon, name, streak line, today's status
+      // Header: icon, name, one line of numbers
       var head = el('div', 'gh-head');
-      var chip = el('span', 'goal-chip');
-      chip.dataset.color = h.color || 'jade';
-      chip.setAttribute('aria-hidden', 'true');
-      chip.appendChild(icon(h.icon || 'target', 18));
-      head.appendChild(chip);
-      var text = el('div', 'gh-text');
-      var name = el('h3', 'gh-name', h.name);
-      text.appendChild(name);
-      var meta = el('p', 'gh-meta');
+      var chip = goalChip(h, true);
+      if (chip) head.appendChild(chip);
+      head.appendChild(el('h3', 'gh-name', h.name));
       var unit = st ? st.unit : 'day';
-      var streak = st && h.status === 'active' ? st.currentStreak : 0;
-      var flame = iconSpan('flame', 14, 'gh-flame');
-      flame.setAttribute('aria-hidden', 'true');
-      meta.appendChild(flame);
-      meta.appendChild(document.createTextNode(
-        (h.status === 'active' ? streak + '-' + unit + ' streak' : statusTag(st || h)) +
-        (st && st.periods ? ' · ' + st.completionRate + '% ' + (unit === 'week' ? 'of weeks met' : 'done') : '')));
-      text.appendChild(meta);
-      head.appendChild(text);
-
-      var todayEntry = rec && rec.habits.filter(function (e) { return e.id === h.id; })[0];
-      if (todayEntry) {
-        var isDone = rec.done.indexOf(h.id) >= 0;
-        var badge = el('span', 'gh-status' + (isDone ? ' is-done' : ''));
-        badge.appendChild(icon(isDone ? 'check' : 'circle-check', 18));
-        badge.setAttribute('role', 'img');
-        badge.setAttribute('aria-label', isDone ? 'Done today' : 'Not done yet today');
-        badge.dataset.tip = isDone ? 'Done today' : 'Not done yet today';
-        if (!isDone) badge.firstChild.style.opacity = '0';
-        head.appendChild(badge);
-      }
+      var parts = [];
+      if (h.status !== 'active') parts.push(statusTag(st || h));
+      else parts.push((st ? st.currentStreak : 0) + '-' + unit + ' streak');
+      if (st) parts.push('best ' + st.bestStreak);
+      if (st && st.periods) parts.push(st.completionRate + '%' + (unit === 'week' ? ' of weeks' : ''));
+      if (st && st.unit === 'week' && st.thisWeek) parts.push(st.thisWeek.count + ' of ' + st.thisWeek.target + ' this week');
+      head.appendChild(el('p', 'gh-meta', parts.join(' · ')));
       li.appendChild(head);
-
-      // Weekly goals: this week's progress bar
-      if (st && st.unit === 'week' && st.thisWeek) {
-        var wk = el('div', 'gh-week');
-        var bar = el('div', 'progress progress-sm');
-        bar.setAttribute('role', 'progressbar');
-        bar.setAttribute('aria-label', h.name + ' this week');
-        bar.setAttribute('aria-valuemin', '0');
-        bar.setAttribute('aria-valuemax', String(st.thisWeek.target));
-        bar.setAttribute('aria-valuenow', String(Math.min(st.thisWeek.count, st.thisWeek.target)));
-        var fill = el('div', 'progress-bar');
-        fill.style.width = Math.min(100, (st.thisWeek.count / st.thisWeek.target) * 100) + '%';
-        bar.appendChild(fill);
-        wk.appendChild(bar);
-        wk.appendChild(el('span', 'gh-week-text', st.thisWeek.count + ' / ' + st.thisWeek.target + ' this week'));
-        li.appendChild(wk);
-      }
 
       // Contribution grid (weeks as columns, days as rows)
       var g = el('div', 'gh-grid');
@@ -1624,39 +1611,6 @@
     writePref(GH_KEY, open);
     renderGoalHistory();
     announce(open ? 'Goal history expanded.' : 'Goal history collapsed.');
-  }
-
-  function renderGoalStreaks() {
-    var list = $('habit-stats');
-    list.textContent = '';
-    var all = stats.habitStats(state, today, weekStart());
-    $('goal-streaks-card').hidden = !all.length;
-    all.forEach(function (s) {
-      var li = el('li', 'habit-stat');
-      var head = el('div', 'habit-stat-head');
-      var chip = goalChip(s, true);
-      if (chip) head.appendChild(chip);
-      head.appendChild(el('h3', 'habit-stat-name', s.name));
-      if (statusTag(s)) head.appendChild(el('span', 'tag', statusTag(s)));
-      head.appendChild(el('span', 'tag', scheduleText(s.schedule)));
-      li.appendChild(head);
-      var dl = el('dl', 'habit-stat-grid');
-      var unit = s.unit;
-      [
-        [unit === 'week' ? 'Weeks target met' : 'Completion rate', s.periods ? s.completionRate + '%' : '—'],
-        ['Goal streak', s.status === 'active' ? unitText(s.currentStreak, unit) : '—'],
-        ['Best goal streak', unitText(s.bestStreak, unit)],
-        [unit === 'week' ? (s.thisWeek ? 'This week' : 'Times done') : 'Times done',
-          unit === 'week' && s.thisWeek ? s.thisWeek.count + ' of ' + s.thisWeek.target : plural(s.completed, 'time')]
-      ].forEach(function (pair) {
-        var div = el('div');
-        div.appendChild(el('dt', '', pair[0]));
-        div.appendChild(el('dd', '', pair[1]));
-        dl.appendChild(div);
-      });
-      li.appendChild(dl);
-      list.appendChild(li);
-    });
   }
 
   function onRangeChange(event) {
@@ -1723,16 +1677,14 @@
       var need = stats.MIN.chartDays - tracked.length;
       $('chart-daily-caption').textContent = '';
       $('chart-daily-empty-text').textContent = tracked.length
-        ? 'Track ' + plural(need, 'more day') + ' in this range to see your daily completion trend. One or two points aren’t a trend yet.'
-        : 'No tracked days in this range yet. Check in on Today and your trend will build here.';
+        ? 'A few more check-ins will reveal your trend.'
+        : 'Your trend builds here as you check in.';
       return;
     }
     var avg = tracked.length ? Math.round(tracked.reduce(function (a, p) { return a + p.percentage; }, 0) / tracked.length) : 0;
     var locked = tracked.filter(function (p) { return p.lockedIn; }).length;
     var rangeText = chartRange === 'all' ? 'all time' : 'the last ' + n + ' days';
-    $('chart-daily-caption').textContent = tracked.length
-      ? 'Average ' + avg + '% over ' + plural(tracked.length, 'tracked day') + ' · ' + locked + ' Locked In'
-      : 'No tracked days in this range yet.';
+    $('chart-daily-caption').textContent = avg + '% average · ' + locked + ' of ' + plural(tracked.length, 'day') + ' locked in';
 
     var root = svg('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, class: 'chart-svg', role: 'img', tabindex: '0',
       'aria-label': 'Daily completion for ' + rangeText + '. ' + $('chart-daily-caption').textContent + '. Use the arrow keys to read each day, or open the data table below.' });
@@ -1916,13 +1868,13 @@
     var btn = $('notify-permission');
     btn.hidden = true;
     if (!('Notification' in window)) {
-      text.textContent = 'This browser doesn’t support system notifications. Reminders still appear inside Day by Day.';
+      text.textContent = 'Not supported in this browser.';
     } else if (Notification.permission === 'granted') {
-      text.textContent = 'Allowed. Reminders can appear as system notifications while Day by Day is open.';
+      text.textContent = 'Allowed.';
     } else if (Notification.permission === 'denied') {
-      text.textContent = 'Blocked in your browser’s site settings. Reminders still appear inside Day by Day.';
+      text.textContent = 'Blocked in your browser settings.';
     } else {
-      text.textContent = 'Not allowed yet. Allow them to get reminders as system notifications, not just inside the app.';
+      text.textContent = 'Get reminders outside the app too.';
       btn.hidden = false;
     }
   }
@@ -2205,10 +2157,8 @@
     $('account-signed-out').hidden = signedIn;
     $('account-signed-in').hidden = !signedIn;
     if (signedIn) $('account-name').textContent = cloudUser.email || cloudUser.name || 'your Google account';
-    $('data-description').textContent = signedIn
-      ? 'Your progress is saved on this device and in your account. Export a backup file any time.'
-      : 'Everything is stored in this browser. Export a backup file to keep it safe or move it to another device.';
-    $('privacy-account-note').textContent = signedIn ? ' and in your private account, which only you can read' : '';
+    $('data-description').textContent = (signedIn ? 'Saved on this device and in your private account.' : 'Saved on this device.') +
+      ' No ads, analytics or trackers.';
     renderSyncLast();
   }
 
@@ -2461,8 +2411,16 @@
     $('early-action').addEventListener('click', function () { selectTab('today', true); });
     $('day-dialog-close').addEventListener('click', function () { closeDialog('day-dialog'); });
     $('day-dialog').addEventListener('close', function () { restoreFocus('day-dialog', $('cal-grid')); });
+    $('day-panel-close').addEventListener('click', closeDayPanel);
+    $('panel-stats').addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !$('day-panel').hidden) {
+        e.preventDefault();
+        closeDayPanel();
+      }
+    });
     WIDE.addEventListener && WIDE.addEventListener('change', function () {
       if (WIDE.matches && $('day-dialog').open) closeDialog('day-dialog');
+      if (activeTab === 'stats') renderDayPanel();
     });
 
     // Settings

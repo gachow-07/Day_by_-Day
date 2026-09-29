@@ -18,7 +18,7 @@
 
   var THEME_KEY = 'day-by-day.theme';
   var PREFERENCES = ['auto', 'light', 'dark'];
-  var THEME_COLORS = { light: '#f5f6f5', dark: '#0e1113' };
+  var THEME_COLORS = { light: '#f4f1ea', dark: '#161512' };
 
   /** Anything unknown (missing, damaged, old) falls back to 'auto'. */
   function normalizePreference(value) {

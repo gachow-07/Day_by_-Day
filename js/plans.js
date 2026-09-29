@@ -60,7 +60,7 @@
   var EARLY_ACCESS = {
     id: 'early-access',
     name: 'Early access',
-    description: 'All Pro features are included while paid plans are being prepared. Nothing is charged, and you’ll be told before anything changes.',
+    description: 'Every Pro feature, free for now. Nothing is charged, and you’ll hear from us before that changes.',
     billingAvailable: false,
     limits: PLANS.pro.limits,
     features: PLANS.pro.features

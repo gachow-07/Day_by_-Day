@@ -322,12 +322,12 @@
       out.items.push({
         id: 'trend',
         tone: ch > 0 ? 'up' : ch < 0 ? 'down' : 'flat',
-        text: 'You completed ' + wow.thisWeek.rate + '% of your goals in the past 7 days' +
-          (ch === 0 ? ', the same as the week before.' : ', ' + (ch > 0 ? 'up ' : 'down ') + Math.abs(ch) + ' points from the week before.')
+        text: wow.thisWeek.rate + '% of goals done this week, ' +
+          (ch === 0 ? 'the same as last week.' : (ch > 0 ? 'up ' : 'down ') + Math.abs(ch) + ' points on last week.')
       });
     } else {
       var w = windowTotals(state, today);
-      if (w.days) out.items.push({ id: 'week', tone: 'flat', text: 'You completed ' + w.rate + '% of your goals in the past 7 days.' });
+      if (w.days) out.items.push({ id: 'week', tone: 'flat', text: w.rate + '% of goals done this week.' });
     }
 
     // Biggest opportunity: the active every-day goal done least often in the last 30 days.
@@ -350,14 +350,14 @@
       var low = recent[0];
       var next = recent[1];
       if (low.rate < 85 && next.rate - low.rate >= 10) {
-        out.items.push({ id: 'opportunity', tone: 'focus', text: low.name + ' is your biggest opportunity: done on ' + low.rate + '% of the days it was due this month.' });
+        out.items.push({ id: 'opportunity', tone: 'focus', text: low.name + ' has the most room to grow: ' + low.rate + '% this month.' });
       }
     }
 
     var wd = weekdayStrength(state, today);
     if (wd.available) {
       out.items.push({ id: 'weekday', tone: 'flat', dow: wd.strongest.dow, weakDow: wd.weakest.dow,
-        text: name(wd.strongest.dow) + ' is your most consistent day (' + wd.strongest.rate + '%); ' + name(wd.weakest.dow) + ' is your hardest (' + wd.weakest.rate + '%).' });
+        text: name(wd.strongest.dow) + 's are your most consistent (' + wd.strongest.rate + '%). ' + name(wd.weakest.dow) + 's are hardest (' + wd.weakest.rate + '%).' });
     }
     return out;
   }

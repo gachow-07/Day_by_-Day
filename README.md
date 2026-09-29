@@ -6,7 +6,7 @@ Add the goals you want to stay consistent with. Each day you check them off; whe
 
 Open the app → check off your goals → leave.
 
-- Plain HTML, CSS and JavaScript. No framework, no build step, no runtime dependencies. The Inter typeface and a subset of [Lucide](https://lucide.dev) icons are bundled (`fonts/`, `js/icons.js`, licences included).
+- Plain HTML, CSS and JavaScript. No framework, no build step, no runtime dependencies. The Instrument Sans typeface and a subset of [Lucide](https://lucide.dev) icons are bundled (`fonts/`, `js/icons.js`, licences included).
 - Works offline, including opening the app with no connection (a service worker caches it). Data is always saved in your browser's `localStorage` first.
 - Can be installed as an app (web manifest), with a **Check in today** shortcut.
 - Optional **Sign in with Google** saves your progress to your account and syncs it across devices (Firebase; see [Sign-in and sync](#sign-in-and-sync)). Sign-in stays hidden until it is configured.
@@ -37,9 +37,9 @@ GitHub Pages lets browsers keep CSS and JavaScript for about 10 minutes. Without
 
 The app has three sections: a left sidebar on screens 768px and wider, and a bottom tab bar on phones (it respects the safe area and never covers content).
 
-- **Today:** a hero card with today's date, your locked-in streak, your best streak, a progress ring and a plain message ("One more goal to lock in today."). Below: an optional **Today's focus**, then today's goals. Ticking a goal saves instantly. When the last one is done, the ring completes, a check draws in and the card says **Day locked in**. There's no confetti, and it's still with reduced motion. Times-per-week goals sit in a **This week** group with their weekly progress.
-- **Stats:** locked-in streak, best locked-in streak, completion rate (with week-over-week change once there's enough data) and locked-in days; plain-language insights about this week; a month calendar with day details (a side panel on wide screens, a bottom sheet on phones); daily completion (7 / 30 / 90 days / all time) and by weekday; **Goal history**, a dropdown (closed by default, remembered per device) with a card per goal showing its streak, completion rate, today's status and a contribution grid of up to a year of days in the goal's colour; and each goal's own streak.
-- **Settings:** Appearance (theme, week start), Notifications, Account and syncing, Subscription, Data and privacy (export and import) and Advanced (delete everything).
+- **Today:** your locked-in streak in large type, your best streak, and the past six days as small tiles next to a larger tile for today, which fills as you check goals off. Below: an optional one-line **Focus**, then today's goals. Ticking a goal saves instantly. When the last one is done, today's tile settles into its completed state (a small lift and drop, then a check draws in, all under a second) and the line reads **Locked in**. There's no confetti, and with reduced motion the tile simply changes. Times-per-week goals sit in a **This week** group with their weekly progress.
+- **Stats:** the locked-in streak leads, with best streak, completion rate (and its change on last week), locked-in days and tracked days in one row below (hover a label for its definition). Then this week's insights as short sentences, a full-width month calendar (choosing a day opens its details in a temporary panel beside the calendar on wide screens, or a bottom sheet on phones; Escape or ✕ closes it), daily completion (7 / 30 / 90 days / all time) and by weekday, and **Goals**, a dropdown (closed by default, remembered per device) with each goal's streak, best streak, completion rate and a grid of up to a year of days in the goal's colour. Until there's a week of check-ins, the top shows how many days are left as seven tiles.
+- **Settings:** Appearance (theme, week start), Reminders, Account (when sign-in is set up), Plan, and Your data (export, import, delete everything).
 
 | Situation | What happens |
 | --- | --- |
@@ -193,24 +193,28 @@ To change the format: bump `SCHEMA_VERSION` in `js/core.js`, add a step to `MIGR
 
 ## Design system
 
-All styles come from tokens at the top of `css/styles.css`:
-- a dark reference theme with a matching light theme: deep neutral background, three layered surfaces, low-opacity borders, and mint/jade accent with restrained warning and danger colours;
-- an 8px spacing scale, a type scale set in Inter, 8/12/16px radii, soft shadows, and motion durations and easing curves.
+The idea is *building consistency one day at a time*, so the one recurring shape is the **day tile**, a small rounded square. It is the mark (three tiles stepping up, the newest one done), the week strip and today's tile on Today, the goal checkboxes, the calendar days, the early-data progress and the Goal history grids. Nothing else is decorative.
 
-Components (cards, buttons, inputs, segmented controls, switches, dialogs and sheets) use only those tokens.
+- **Layout before containers.** Sections are grouped by type, spacing and hairlines. Only genuinely separate regions get a surface: dialogs and sheets, the workout menu, and the temporary day panel.
+- **Type.** [Instrument Sans](https://github.com/Instrument/instrument-sans) (variable, Latin, bundled). Page titles 32px semibold, section titles 18px, body 16px, labels 14px, metadata 13px. Statistics and calendar numbers use tabular figures, and the streak is set large with tight tracking.
+- **Colour.** Warm neutrals in both themes (no pure black or white). Mint is kept for completion, active navigation and the main action. Past Locked In days use a quieter green, so only today's completion is bright. Partial days are amber and missed days a muted rose.
+- **Icons** only for navigation and real controls, plus a goal's own icon (plain, in its colour).
+- **Copy** is short and plain. Definitions live in tooltips rather than under every number.
+
+All styles come from tokens at the top of `css/styles.css`: colours for both themes, an 8px spacing scale, the type scale, 6/8/10/14px radii, and motion durations and easing curves.
 
 ## Accessibility
 
 - A visible 2px focus ring on every interactive element, plus a "Skip to main content" link.
-- Every form field has a visible label. Goal checkboxes are native inputs inside `<label>`s (styled, but operable with Space), and progress bars and the ring have ARIA values.
+- Every form field has a visible label. Goal checkboxes are native inputs inside `<label>`s (styled, but operable with Space), and today's tile and the early-data tiles are progress bars with ARIA values.
 - Sections are an ARIA tab list: ↑/↓ in the sidebar, ←/→ in the bottom bar. Each panel starts with a real `<h1>`.
 - Every icon is decorative and hidden from screen readers. Icon-only buttons (month arrows, drag handles, close buttons, icon and colour choices) have an accessible name and a matching tooltip on hover or keyboard focus.
 - Reordering works with the keyboard: focus a goal's handle and press ↑/↓ (or Home/End). Each move is announced.
-- Calendar days are buttons labelled with the date and how it went; future days aren't focusable. Locked In days also show a check, so the calendar never relies on colour alone. Day details open beside the calendar on wide screens, and in a bottom sheet on phones.
-- Charts: the daily chart is keyboard-readable (focus it and use ←/→) and has a **Show data table**. The weekday chart prints every value. Each Goal history grid has a text summary for screen readers ("done on 43 of 45 days it was due"), a legend, and day-by-day details on hover; the dropdown is a button with `aria-expanded`.
+- Calendar days are buttons labelled with the date and how it went; future days aren't focusable. Locked In days also show a check, so the calendar never relies on colour alone. Day details open beside the calendar on wide screens (Escape closes them and returns focus to the day) and in a bottom sheet on phones.
+- Charts: the daily chart is keyboard-readable (focus it and use ←/→) and has a **Data table**. The weekday chart prints every value. Each Goal history grid has a text summary for screen readers ("done on 43 of 45 days it was due"), a legend, and day-by-day details on hover; the dropdown is a button with `aria-expanded`.
 - Screen-reader announcements go through a polite live region (goal done, day locked in, goal changes, moves, import results); errors use `role="alert"`.
 - All dialogs (Edit goals, the goal form, day details, confirmations) are native modal `<dialog>`s: focus is trapped, Escape closes, and focus returns to what opened them. Destructive confirmations start on **Cancel**.
-- Colour pairs meet WCAG 2.1 AA in both themes: text 4.5:1 or better on every surface, and 3:1 or better for focus rings, control borders, the progress ring and goal icons (checked with a script).
+- Colour pairs meet WCAG 2.1 AA in both themes: text 4.5:1 or better on every surface, and 3:1 or better for focus rings, control borders, calendar marks and goal icons (checked with a script).
 - Works from 320px wide, at 200% zoom and up to wide desktops without horizontal scrolling, and the fixed navigation never covers content. Animations are short and subtle, and are switched off with `prefers-reduced-motion`. Windows high-contrast mode keeps ticks, bars and Locked In days visible.
 
 ## Project structure
@@ -221,7 +225,7 @@ index.html          Markup: navigation, Today / Stats / Settings, goal editor, g
 icon.svg            App icon (favicon and install icon)
 manifest.webmanifest  Install metadata and the "Check in today" shortcut
 sw.js               Service worker: caches the app for offline use
-fonts/              Inter (variable, Latin) and its licence
+fonts/              Instrument Sans (variable, Latin) and its licence (OFL)
 css/styles.css      All styles; design tokens (light and dark) at the top
 js/icons.js         Bundled Lucide icons (ISC licence) and a tiny helper
 js/plans.js         Free / Pro plan definitions and feature entitlements
