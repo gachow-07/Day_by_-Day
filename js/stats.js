@@ -322,7 +322,7 @@
       total += core.loggedAmount(rec, habitId);
       n++;
     });
-    return n ? { unit: h.amount.unit, average: Math.round(total / n), days: n } : null;
+    return n ? { unit: h.amount.unit, display: h.amount.display || null, average: Math.round(total / n), days: n } : null;
   }
 
   /* ---------------- Insights ---------------- */

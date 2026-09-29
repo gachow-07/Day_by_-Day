@@ -182,7 +182,7 @@ test('water is logged a glass at a time and is done at the goal', () => {
 test('water goals are validated per unit', () => {
   const s = withHabits(MON, ['Water']);
   assert.match(core.updateHabit(s, 'h1', { amount: { unit: 'ml', goal: 50 } }, MON).message, /between 100 ml and 10 L/);
-  assert.match(core.updateHabit(s, 'h1', { amount: { unit: 'oz', goal: 400 } }, MON).message, /between 4 and 340 fl oz/);
+  assert.match(core.updateHabit(s, 'h1', { amount: { unit: 'oz', goal: 400 } }, MON).message, /between 4 fl oz and 3 gallons/);
   assert.match(core.updateHabit(s, 'h1', { amount: { unit: 'cups', goal: 8 } }, MON).message, /Choose what to track/);
   const w = water(MON);
   assert.equal(core.logAmount(w, 'h1', 20001, MON).error, 'invalid-amount');
@@ -225,8 +225,31 @@ test('average water per day leaves out today and other units', () => {
   const WED = '2026-09-09';
   s = openOn(s, WED);
   s = core.logAmount(s, 'h1', 250, WED).state;
-  assert.deepEqual(stats.amountAverage(s, 'h1', WED, 30), { unit: 'ml', average: 2000, days: 2 });
+  assert.deepEqual(stats.amountAverage(s, 'h1', WED, 30), { unit: 'ml', display: null, average: 2000, days: 2 });
   assert.equal(stats.amountAverage(s, 'h2', WED, 30), null, 'not an amount goal');
   s = core.updateHabit(s, 'h1', { amount: { unit: 'oz', goal: 64 } }, WED).state;
   assert.equal(stats.amountAverage(s, 'h1', WED, 30), null, 'past ml days are not mixed into oz');
+});
+
+test('water in fl oz can be shown as cups or gallons, stored in whole fl oz', () => {
+  let s = withHabits(MON, ['Water']);
+  s = core.updateHabit(s, 'h1', { amount: { unit: 'oz', goal: 128, display: 'gal' } }, MON).state;
+  assert.deepEqual(core.findHabit(s, 'h1').amount, { unit: 'oz', goal: 128, display: 'gal' });
+  assert.deepEqual(s.days[MON].habits[0].amount, { unit: 'oz', goal: 128, display: 'gal' }, 'the day remembers how it was shown');
+  s = core.logAmount(s, 'h1', 8, MON).state;                          // a cup
+  s = core.updateHabit(s, 'h1', { amount: { unit: 'oz', goal: 64, display: 'cup' } }, MON).state;
+  assert.deepEqual(s.days[MON].logs.h1, [8], 'changing how it is shown keeps today');
+  const plain = core.updateHabit(s, 'h1', { amount: { unit: 'oz', goal: 64, display: 'oz' } }, MON).state;
+  assert.deepEqual(core.findHabit(plain, 'h1').amount, { unit: 'oz', goal: 64 }, 'fl oz is the default display');
+  assert.match(core.updateHabit(s, 'h1', { amount: { unit: 'ml', goal: 2000, display: 'cup' } }, MON).message, /how to show/);
+  assert.match(core.updateHabit(s, 'h1', { amount: { unit: 'oz', goal: 64, display: 'pint' } }, MON).message, /how to show/);
+  assert.match(core.updateHabit(s, 'h1', { amount: { unit: 'oz', goal: 400 } }, MON).message, /3 gallons/);
+  assert.deepEqual(core.validateState(s), []);
+  const bad = JSON.parse(JSON.stringify(s));
+  bad.habits[0].amount.display = 'oz';
+  assert.match(core.validateState(bad).join(' '), /amount is invalid/);
+  const back = core.parseImport(JSON.stringify(core.buildExport(s, new Date())));
+  assert.equal(back.ok, true, back.message);
+  assert.deepEqual(back.state, s);
+  assert.equal(core.buildExport(s, new Date()).dailyRecords[0].habits[0].amount.display, 'cup');
 });

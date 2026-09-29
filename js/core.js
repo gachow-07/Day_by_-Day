@@ -44,8 +44,10 @@
   var UNITS = {
     min: { minGoal: 5, maxGoal: 1440, maxDay: 1440 },
     ml: { minGoal: 100, maxGoal: 10000, maxDay: 20000 },
-    oz: { minGoal: 4, maxGoal: 340, maxDay: 680 }
+    oz: { minGoal: 4, maxGoal: 384, maxDay: 768 }
   };
+  /* How a water goal in fl oz is shown: fl oz, cups (8 fl oz) or gallons (128 fl oz). */
+  var OZ_DISPLAYS = ['oz', 'cup', 'gal'];
   var ML_PER_OZ = 29.5735;
   var MAX_LOGS = 100;            // time entries per goal per day
   var PARTIAL_CREDIT = 0.5;      // "partly done" counts as half in completion rates
@@ -135,6 +137,8 @@
    *     amount: null, or a daily amount logged in pieces: { unit, goal } where
    *       unit is 'min' (time: "study for 2 hours", 30 minutes at a time),
    *       'ml' or 'oz' (water: 2 litres a day, a glass at a time). See UNITS.
+   *       Water in 'oz' may add display: 'oz' | 'cup' | 'gal', the unit it's
+   *       shown and typed in; it's always stored and logged in whole fl oz.
    *   days: { 'YYYY-MM-DD': { habits: [{ id, name, flex?, target?, workout?, amount? }],
    *                           done: [id], partial?: [id], logs?: { id: [amounts] } } }
    *     One record per calendar date: a snapshot of the goals shown that day
@@ -296,9 +300,23 @@
     var goal = Number(input.goal);
     if (!Number.isInteger(goal) || goal < u.minGoal || goal > u.maxGoal) {
       return { error: unit === 'min' ? 'Set a time goal between 5 minutes and 24 hours.'
-        : unit === 'ml' ? 'Set a water goal between 100 ml and 10 L.' : 'Set a water goal between 4 and 340 fl oz.' };
+        : unit === 'ml' ? 'Set a water goal between 100 ml and 10 L.' : 'Set a water goal between 4 fl oz and 3 gallons.' };
     }
-    return { amount: { unit: unit, goal: goal } };
+    var out = { unit: unit, goal: goal };
+    if (input.display !== undefined && input.display !== null) {
+      if (unit !== 'oz' || OZ_DISPLAYS.indexOf(input.display) < 0) return { error: 'Choose how to show the water goal.' };
+      if (input.display !== 'oz') out.display = input.display;
+    }
+    return { amount: out };
+  }
+
+  /** A stored amount: known unit, whole goal in range, optional display for oz. */
+  function validAmount(a, minGoal) {
+    if (!isPlainObject(a) || !UNITS[a.unit]) return false;
+    var keys = Object.keys(a).filter(function (k) { return k !== 'unit' && k !== 'goal' && k !== 'display'; });
+    if (keys.length) return false;
+    if (a.display !== undefined && (a.unit !== 'oz' || a.display === 'oz' || OZ_DISPLAYS.indexOf(a.display) < 0)) return false;
+    return Number.isInteger(a.goal) && a.goal >= (minGoal || 1) && a.goal <= UNITS[a.unit].maxGoal;
   }
 
   function clone(value) {
@@ -434,7 +452,7 @@
       var entry = how === 'flex' ? { id: h.id, name: h.name, flex: true, target: h.schedule.times } : { id: h.id, name: h.name };
       var workout = workoutOn(state, h, date);
       if (workout) entry.workout = workout;
-      if (h.amount) entry.amount = { unit: h.amount.unit, goal: h.amount.goal };
+      if (h.amount) entry.amount = clone(h.amount);
       out.push(entry);
     });
     return out;
@@ -877,7 +895,7 @@
         if (sch.error || JSON.stringify(sch.schedule) !== JSON.stringify(h.schedule)) err(label + '.schedule is invalid.');
         if (h.reminder !== null && !(typeof h.reminder === 'string' && TIME_RE.test(h.reminder))) err(label + '.reminder is invalid.');
         if (!validSplit(h.split)) err(label + '.split is invalid.');
-        if (h.amount !== null && (!isPlainObject(h.amount) || Object.keys(h.amount).length !== 2 || cleanAmount(h.amount).error)) err(label + '.amount is invalid.');
+        if (h.amount !== null && !validAmount(h.amount, UNITS[h.amount && h.amount.unit] && UNITS[h.amount.unit].minGoal)) err(label + '.amount is invalid.');
       });
       if (active > MAX_ACTIVE_HABITS) err('Too many active habits.');
     }
@@ -899,8 +917,7 @@
         if (!isPlainObject(h)) { err(label + ' has an invalid habit.'); return; }
         var badFlex = h.flex !== undefined && (h.flex !== true || !Number.isInteger(h.target) || h.target < 1 || h.target > 6);
         var badWorkout = h.workout !== undefined && !(typeof h.workout === 'string' && h.workout.trim() && h.workout.length <= MAX_WORKOUT_LENGTH);
-        var badAmount = h.amount !== undefined && !(isPlainObject(h.amount) && UNITS[h.amount.unit] && Object.keys(h.amount).length === 2 &&
-          Number.isInteger(h.amount.goal) && h.amount.goal >= 1 && h.amount.goal <= UNITS[h.amount.unit].maxGoal);
+        var badAmount = h.amount !== undefined && !validAmount(h.amount, 1);
         if (typeof h.id !== 'string' || !validName(h.name) || badFlex || badWorkout || badAmount || (h.flex === undefined && h.target !== undefined)) {
           err(label + ' has an invalid habit.');
           return;
@@ -1317,7 +1334,10 @@
           var item = { id: h.id, name: h.name, done: rec.done.indexOf(h.id) >= 0 };
           if (h.flex) item.flexible = true;
           if (h.workout) item.workout = h.workout;
-          if (h.amount) item.amount = { unit: h.amount.unit, logged: loggedAmount(rec, h.id), goal: h.amount.goal };
+          if (h.amount) {
+            item.amount = { unit: h.amount.unit, logged: loggedAmount(rec, h.id), goal: h.amount.goal };
+            if (h.amount.display) item.amount.display = h.amount.display;
+          }
           else if (rec.partial && rec.partial.indexOf(h.id) >= 0) item.partlyDone = true;
           return item;
         }),

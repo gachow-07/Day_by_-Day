@@ -449,8 +449,26 @@
   /* ---------------- Goal menu: time, partly done, workouts ---------------- */
 
   var menuFor = null; // goal id the menu is open for
-  var LOG_AMOUNTS = { min: [15, 30, 60, 120], ml: [250, 500, 750, 1000], oz: [8, 12, 16, 24] };
-  var WATER_DEFAULTS = { ml: 2000, oz: 64 };
+  // Quick amounts, stored in the goal's unit (minutes, ml, or fl oz for cups and gallons)
+  var LOG_AMOUNTS = { min: [15, 30, 60, 120], ml: [250, 500, 750, 1000], oz: [8, 12, 16, 24], cup: [8, 16, 24, 32], gal: [8, 16, 32, 64] };
+  // Water units as typed in the form and the log dialog
+  var WATER_UNITS = {
+    cup: { perOz: 8, step: 0.5, dflt: 8, name: 'cups' },
+    oz: { perOz: 1, step: 1, dflt: 64, name: 'fl oz' },
+    gal: { perOz: 128, step: 0.05, dflt: 0.5, name: 'gallons' },
+    ml: { perOz: 0, step: 50, dflt: 2000, name: 'ml' }
+  };
+  var ML_PER = { ml: 1, oz: 29.5735, cup: 236.588, gal: 3785.41 };
+
+  /** How an amount goal is shown: 'min', 'ml', 'oz', 'cup' or 'gal'. */
+  function amountView(a) {
+    return a.unit === 'oz' ? (a.display || 'oz') : a.unit;
+  }
+
+  /** 2.5 → "2.5", 0.375 → "0.38", 3 → "3". */
+  function trimNumber(n) {
+    return String(Math.round(n * 100) / 100);
+  }
 
   /** 90 → "1 h 30 min", 45 → "45 min", 120 → "2 h". */
   function formatDuration(minutes) {
@@ -460,12 +478,33 @@
     return h + ' h' + (m ? ' ' + m + ' min' : '');
   }
 
-  /** An amount in its unit: "1 h 30 min", "750 ml", "1.5 L", "16 oz". */
-  function formatAmount(value, unit) {
-    if (unit === 'min') return formatDuration(value);
-    if (unit === 'oz') return value + ' oz';
-    if (value >= 1000) return (Math.round(value / 10) / 100) + ' L';
+  /**
+   * A stored amount shown the goal's way (`a` is its { unit, display }):
+   * "1 h 30 min", "750 ml", "1.5 L", "16 oz", "2.5 cups", "0.5 gal".
+   */
+  function formatAmount(value, a) {
+    var view = amountView(a);
+    if (view === 'min') return formatDuration(value);
+    if (view === 'oz') return value + ' oz';
+    if (view === 'cup') { var c = value / 8; return trimNumber(c) + (c === 1 ? ' cup' : ' cups'); }
+    if (view === 'gal') return trimNumber(value / 128) + ' gal';
+    if (value >= 1000) return trimNumber(value / 1000) + ' L';
     return value + ' ml';
+  }
+
+  /** "6 of 8 cups", "0.5 of 1 gal", "1 h of 2 h", "750 ml of 2 L". */
+  function amountProgress(logged, a) {
+    var view = amountView(a);
+    if (view === 'oz') return logged + ' of ' + formatAmount(a.goal, a);
+    if (view === 'cup') return trimNumber(logged / 8) + ' of ' + formatAmount(a.goal, a);
+    if (view === 'gal') return trimNumber(logged / 128) + ' of ' + formatAmount(a.goal, a);
+    return formatAmount(logged, a) + ' of ' + formatAmount(a.goal, a);
+  }
+
+  /** Quick-add label: in gallons, small amounts read better in cups. */
+  function quickLabel(value, a) {
+    if (amountView(a) === 'gal') return value === 64 ? '½ gal' : value < 32 ? formatAmount(value, { unit: 'oz', display: 'cup' }) : value + ' oz';
+    return formatAmount(value, a);
   }
 
   function upcomingLabel(u, k) {
@@ -511,21 +550,22 @@
 
     if (entry.amount) {
       var unit = entry.amount.unit;
+      var am = entry.amount;
       var logged = core.loggedAmount(rec, id);
-      sub.push((logged ? formatAmount(logged, unit) : 'Nothing') + ' of ' + formatAmount(entry.amount.goal, unit) + ' today');
+      sub.push(logged ? amountProgress(logged, am) + ' today' : 'Nothing of ' + formatAmount(am.goal, am) + ' today');
       var chips = el('div', 'menu-chips');
       chips.setAttribute('role', 'group');
       chips.setAttribute('aria-label', unit === 'min' ? 'Log time' : 'Log water');
-      LOG_AMOUNTS[unit].forEach(function (m) {
-        var b = menuButton('menu-item menu-chip', 'log', '+' + formatAmount(m, unit));
+      LOG_AMOUNTS[amountView(am)].forEach(function (m) {
+        var b = menuButton('menu-item menu-chip', 'log', '+' + quickLabel(m, am));
         b.dataset.amount = String(m);
-        b.setAttribute('aria-label', 'Log ' + formatAmount(m, unit));
+        b.setAttribute('aria-label', 'Log ' + quickLabel(m, am));
         chips.appendChild(b);
       });
       items.appendChild(chips);
       items.appendChild(menuButton('menu-item', 'log-custom', 'Other amount…'));
       var list = rec.logs && rec.logs[id];
-      if (list && list.length) items.appendChild(menuButton('menu-item', 'undo', 'Undo last', formatAmount(list[list.length - 1], unit)));
+      if (list && list.length) items.appendChild(menuButton('menu-item', 'undo', 'Undo last', formatAmount(list[list.length - 1], am)));
     } else {
       var isPartial = !!(rec.partial && rec.partial.indexOf(id) >= 0);
       var p = menuButton('menu-item', 'partial', 'Partly done', isPartial ? 'Tap to clear' : 'Counts as half');
@@ -620,8 +660,8 @@
       if (!u.ok) { announce(u.message); return; }
       if (commit(u.state)) {
         var e = todayEntry(id);
-        announce('Removed ' + formatAmount(u.removed, e.amount.unit) + '. ' + progressText(e) + '.');
-        showToast('Removed ' + formatAmount(u.removed, e.amount.unit) + ' from ' + e.name + '.');
+        announce('Removed ' + formatAmount(u.removed, e.amount) + '. ' + progressText(e) + '.');
+        showToast('Removed ' + formatAmount(u.removed, e.amount) + ' from ' + e.name + '.');
       }
       focusGoalButton(id);
       return;
@@ -649,7 +689,7 @@
 
   function progressText(entry) {
     var logged = core.loggedAmount(state.days[today], entry.id);
-    return formatAmount(logged, entry.amount.unit) + ' of ' + formatAmount(entry.amount.goal, entry.amount.unit);
+    return amountProgress(logged, entry.amount);
   }
 
   /** Log an amount (minutes, ml or oz) for a goal and say how it's going. Returns true when saved. */
@@ -667,14 +707,14 @@
       row.classList.add('just-done');
     }
     var s = core.recordSummary(state.days[today]);
-    var amt = formatAmount(value, r.unit);
+    var amt = formatAmount(value, entry.amount);
     if (r.lockedIn && reached) {
       announce('Logged ' + amt + '. ' + entry.name + ' done, and the day is locked in.');
     } else {
       announce('Logged ' + amt + '. ' + progressText(entry) + (reached ? '. ' + entry.name + ' done.' : '.') +
         (reached && s.total ? ' ' + s.completed + ' of ' + s.total + ' goals done today.' : ''));
     }
-    showToast(reached ? entry.name + ' done: ' + formatAmount(r.logged, r.unit) + '.' : '+' + amt + ' · ' + progressText(entry));
+    showToast(reached ? entry.name + ' done: ' + formatAmount(r.logged, entry.amount) + '.' : '+' + amt + ' · ' + progressText(entry));
     focusGoalButton(id);
     return true;
   }
@@ -694,13 +734,32 @@
     $('log-water-fields').hidden = time;
     $('log-hours').value = '0';
     $('log-mins').value = '30';
-    $('log-value').value = String(LOG_AMOUNTS[entry.amount.unit][0]);
-    $('log-unit').textContent = entry.amount.unit === 'oz' ? 'fl oz' : 'ml';
+    var view = amountView(entry.amount);
+    var unitSel = $('log-unit');
+    unitSel.textContent = '';
+    (view === 'min' ? [] : entry.amount.unit === 'ml' ? ['ml'] : ['cup', 'oz', 'gal']).forEach(function (u) {
+      var o = el('option', null, WATER_UNITS[u].name);
+      o.value = u;
+      unitSel.appendChild(o);
+    });
+    unitSel.disabled = entry.amount.unit === 'ml';
+    unitSel.value = view === 'min' ? '' : view;
+    $('log-value').value = view === 'gal' || view === 'cup' ? '1' : String(LOG_AMOUNTS[view] ? LOG_AMOUNTS[view][0] : 1);
+    $('log-value').step = view === 'min' ? '1' : String(WATER_UNITS[view].step);
     $('log-save').textContent = time ? 'Log time' : 'Log water';
     $('log-error').hidden = true;
     dialogOpeners['log-dialog'] = $('goal-more-' + id);
     openDialog('log-dialog', time ? $('log-mins') : $('log-value'));
     dialogOpeners['log-dialog'] = $('goal-more-' + id);
+  }
+
+  /** A typed water amount in `view` (ml, oz, cup, gal) as whole stored units (ml or fl oz). */
+  function toStored(text, view) {
+    var t = String(text).trim();
+    if (!/^\d+(\.\d+)?$|^\.\d+$/.test(t)) return NaN;
+    var n = Number(t);
+    if (view === 'ml') return Math.round(n);
+    return Math.round(n * WATER_UNITS[view].perOz);
   }
 
   function wholeNumber(text) {
@@ -719,8 +778,8 @@
     event.preventDefault();
     var entry = todayEntry(loggingId);
     var time = !entry || entry.amount.unit === 'min';
-    var value = time ? readDuration($('log-hours'), $('log-mins')) : wholeNumber($('log-value').value);
-    var error = !(value > 0) ? (time ? 'Enter how long, like 0 h 30 min.' : 'Enter how much you drank, like 250.') : '';
+    var value = time ? readDuration($('log-hours'), $('log-mins')) : toStored($('log-value').value, $('log-unit').value);
+    var error = !(value > 0) ? (time ? 'Enter how long, like 0 h 30 min.' : 'Enter how much you drank, like ' + ($('log-unit').value === 'ml' ? '250.' : '1.')) : '';
     if (!error) {
       checkForNewDay();
       if (holdForAccount()) { closeDialog('log-dialog'); return; }
@@ -751,8 +810,8 @@
     var parts = [];
     if (entry.amount) {
       var logged = rec ? core.loggedAmount(rec, entry.id) : 0;
-      var u = entry.amount.unit;
-      parts.push(logged ? formatAmount(logged, u) + ' of ' + formatAmount(entry.amount.goal, u) : formatAmount(entry.amount.goal, u) + (u === 'min' ? '' : ' today'));
+      var am = entry.amount;
+      parts.push(logged ? amountProgress(logged, am) : formatAmount(am.goal, am) + (am.unit === 'min' ? '' : ' today'));
     } else if (rec && rec.partial && rec.partial.indexOf(entry.id) >= 0) {
       parts.push('Partly done');
     }
@@ -1014,7 +1073,7 @@
 
   function goalSub(h) {
     var parts = [scheduleText(h.schedule)];
-    if (h.amount) parts.push(formatAmount(h.amount.goal, h.amount.unit) + (h.amount.unit === 'min' ? ' a day' : ' of water a day'));
+    if (h.amount) parts.push(formatAmount(h.amount.goal, h.amount) + (h.amount.unit === 'min' ? ' a day' : ' of water a day'));
     if (h.split) parts.push(h.split.workouts.length + '-workout split');
     if (h.reminder) parts.push('Reminder at ' + formatTime(h.reminder));
     if (h.status === 'paused') parts.unshift('Paused');
@@ -1350,9 +1409,13 @@
     document.querySelector('input[name="gf-track"][value="' + track + '"]').checked = true;
     $('gf-dur-h').value = String(track === 'time' ? Math.floor(am.goal / 60) : 1);
     $('gf-dur-m').value = String(track === 'time' ? am.goal % 60 : 0);
-    $('gf-water-unit').value = track === 'water' ? am.unit : (navigator.language === 'en-US' ? 'oz' : 'ml');
-    $('gf-water-goal').value = String(track === 'water' ? am.goal : WATER_DEFAULTS[$('gf-water-unit').value]);
-    $('gf-water-unit').dataset.unit = $('gf-water-unit').value;
+    var wview = track === 'water' ? amountView(am) : 'cup';
+    $('gf-water-unit').value = wview;
+    $('gf-water-goal').value = track === 'water'
+      ? (wview === 'ml' ? String(am.goal) : trimNumber(am.goal / WATER_UNITS[wview].perOz))
+      : String(WATER_UNITS[wview].dflt);
+    $('gf-water-goal').step = String(WATER_UNITS[wview].step);
+    $('gf-water-unit').dataset.unit = wview;
     $('gf-track-error').hidden = true;
     $('gf-split').checked = !!(h && h.split);
     $('gf-workouts').value = h && h.split ? h.split.workouts.join('\n') : '';
@@ -1407,7 +1470,11 @@
   function readAmountField() {
     var track = document.querySelector('input[name="gf-track"]:checked').value;
     if (track === 'time') return { unit: 'min', goal: readDuration($('gf-dur-h'), $('gf-dur-m')) };
-    if (track === 'water') return { unit: $('gf-water-unit').value, goal: wholeNumber($('gf-water-goal').value) };
+    if (track === 'water') {
+      var view = $('gf-water-unit').value;
+      var goal = toStored($('gf-water-goal').value, view);
+      return view === 'ml' ? { unit: 'ml', goal: goal } : { unit: 'oz', goal: goal, display: view };
+    }
     return null;
   }
 
@@ -1420,17 +1487,20 @@
     if (colorNone && colorNone.checked) document.querySelector('input[name="gf-color"][value="sky"]').checked = true;
   }
 
-  /** Switching ml/oz converts the goal typed so far. */
+  /** Switching units converts the goal typed so far (cups, fl oz, gallons or ml). */
   function onWaterUnit() {
     var sel = $('gf-water-unit');
     var from = sel.dataset.unit;
     var to = sel.value;
-    var v = wholeNumber($('gf-water-goal').value);
+    var v = Number($('gf-water-goal').value);
+    var step = WATER_UNITS[to].step;
     if (from && from !== to && v > 0) {
-      $('gf-water-goal').value = String(to === 'oz' ? Math.round(v / 29.5735) : Math.round(v * 29.5735 / 50) * 50);
+      var converted = v * ML_PER[from] / ML_PER[to];
+      $('gf-water-goal').value = trimNumber(Math.max(step, Math.round(converted / step) * step));
     } else if (!(v > 0)) {
-      $('gf-water-goal').value = String(WATER_DEFAULTS[to]);
+      $('gf-water-goal').value = String(WATER_UNITS[to].dflt);
     }
+    $('gf-water-goal').step = String(step);
     sel.dataset.unit = to;
   }
 
@@ -1457,7 +1527,9 @@
     if (nameError) { $('gf-name').focus(); return; }
     if (sch.error) { $('gf-schedule').querySelector('input:checked').focus(); return; }
     if (sp.error) { $('gf-workouts').focus(); return; }
-    var amountError = v.amount ? (isNaN(v.amount.goal) ? (v.amount.unit === 'min' ? 'Enter a time, like 1 h 30 min.' : 'Enter a whole number for your water goal.') : core.cleanAmount(v.amount).error || '') : '';
+    var amountError = v.amount ? (isNaN(v.amount.goal) ? (v.amount.unit === 'min' ? 'Enter a time, like 1 h 30 min.' : 'Enter your water goal as a number, like 8.') : core.cleanAmount(v.amount).error || '') : '';
+    if (amountError && v.amount && v.amount.display === 'cup' && !isNaN(v.amount.goal)) amountError = 'Set a water goal between ½ cup and 48 cups.';
+    if (amountError && v.amount && v.amount.display === 'gal' && !isNaN(v.amount.goal)) amountError = 'Set a water goal of up to 3 gallons.';
     $('gf-track-error').textContent = amountError;
     $('gf-track-error').hidden = !amountError;
     if (amountError) { (v.amount.unit === 'min' ? $('gf-dur-h') : $('gf-water-goal')).focus(); return; }
@@ -1695,7 +1767,7 @@
       var text = el('span');
       text.appendChild(document.createTextNode(item.name));
       if (item.workout) text.appendChild(el('span', 'detail-flex', ' · ' + item.workout));
-      if (item.amount) text.appendChild(el('span', 'detail-flex', ' · ' + formatAmount(item.logged, item.amount.unit) + ' of ' + formatAmount(item.amount.goal, item.amount.unit)));
+      if (item.amount) text.appendChild(el('span', 'detail-flex', ' · ' + amountProgress(item.logged, item.amount)));
       else if (part) text.appendChild(el('span', 'detail-flex', ' · partly done'));
       if (item.flexible) text.appendChild(el('span', 'detail-flex', ' · weekly'));
       text.appendChild(el('span', 'visually-hidden', item.done ? ' (done)' : part ? ' (partly done)' : ' (not done)'));
@@ -1862,7 +1934,7 @@
       if (st && st.periods) parts.push(st.completionRate + '%' + (unit === 'week' ? ' of weeks' : ''));
       if (st && st.unit === 'week' && st.thisWeek) parts.push(st.thisWeek.count + ' of ' + st.thisWeek.target + ' this week');
       var avg = stats.amountAverage(state, h.id, today, 30);
-      if (avg) parts.push('avg ' + formatAmount(avg.average, avg.unit) + ' a day');
+      if (avg) parts.push('avg ' + formatAmount(avg.average, { unit: avg.unit, display: avg.display }) + ' a day');
       head.appendChild(el('p', 'gh-meta', parts.join(' · ')));
       li.appendChild(head);
 

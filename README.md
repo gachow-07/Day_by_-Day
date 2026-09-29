@@ -68,7 +68,7 @@ Not every day is all or nothing:
 
 - **Partly done.** Open a goal's **⋯** menu and choose **Partly done**. Its box fills halfway. Ticking the goal later makes it fully done.
 - **Time goals.** In the goal form, set **Track** to **Time, logged in pieces** and give a daily goal, such as 2 h for "Study". The goal then shows a **Log** button: add **+15 min**, **+30 min**, **+1 h** or **+2 h**, or **Other amount…** for anything else. **Undo last** takes back the most recent entry. The box fills as time adds up, and the goal is done when the entries reach the goal. Ticking the box logs whatever is left; unticking takes back the latest entries.
-- **Water.** Set **Track** to **Water** and choose a daily goal in ml or fl oz (2000 ml or 64 fl oz to start). A new goal fills in "Drink water", a droplet and a blue colour if those are still empty. **Log** adds **+250 ml**, **+500 ml**, **+750 ml** or **+1 L** (or 8, 12, 16 or 24 fl oz), or any amount. The box fills blue as you drink, and the Goals history on Stats shows your average a day over the last 30 days. Switching a goal between ml and fl oz converts what you've logged today.
+- **Water.** Set **Track** to **Water** and choose a daily goal in **cups**, **fl oz**, **gallons** or **ml** (8 cups to start; switching units converts the number). A new goal fills in "Drink water", a droplet and a blue colour if those are still empty. **Log** has quick amounts in the goal's unit: **+1 cup** to **+4 cups**; **+8/12/16/24 oz**; for gallons **+1 cup**, **+2 cups**, **+32 oz** or **+½ gal**; for ml **+250 ml** to **+1 L**. **Other amount…** takes any amount in cups, fl oz or gallons (½ cup and 0.5 gal work). Progress reads "6 of 8 cups" or "0.5 of 1 gal", the box fills blue as you drink, and the Goals history on Stats shows your average a day over the last 30 days. Cups, fl oz and gallons are all stored as fl oz, so switching between them never changes what you logged; switching to or from ml converts today's entries.
 
 Partial progress never makes a day Locked In or continues a streak, but it does count toward completion rates: a partly done goal counts as half, and time and water goals count by the share logged (1 h of 2 h, or 1 L of 2 L, is half). A day with only partial progress shows as **Partial** (yellow) on the calendar rather than missed, and the Goals history grid shows it as a half-filled square.
 
@@ -112,7 +112,7 @@ The tests in `tests/` cover:
 - migrating older saved data (schema 3, the old challenge format and the original prototype) with identical stats, and export/import validation
 - schedules (weekdays, selected days, times per week), neutral unscheduled days, flexible goals not affecting Locked In, weekly goal stats, drag reordering, daily focus and week start
 - insights and their data minimums: week-over-week change, strongest and weakest weekday, biggest opportunity
-- water goals: logging, units and validation, ml/oz conversion, the daily average, and the v6 → 7 migration
+- water goals: logging, units and validation, cups and gallons stored as fl oz, ml/oz conversion, the daily average, and the v6 → 7 migration
 - partly done and time goals: logging in pieces, reaching the goal, undo, ticking and unticking a timed goal, partial credit in completion rates without Locked In or streaks, calendar and grid states, switching a goal to or from timed, validation, the v5 → 6 migration, and export/import
 - workout splits: rotation on due days only and over many weeks, times-per-week splits, swapping a workout (and swapping back), re-anchoring when the schedule changes, validation, the v4 → 5 migration, and workouts in day details and exports
 - plan entitlements (Early access grants everything; Free and Pro limits)
@@ -180,9 +180,11 @@ Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaV
                                    // or null. The day the goal is due on `start` gets workouts[offset],
                                    // and each later due day (or, for times-per-week goals, each day
                                    // after one it was done) the next workout.
-    amount: { unit: 'ml', goal: 2000 }
+    amount: { unit: 'oz', goal: 64, display: 'cup' }
                                    // or null: a daily amount logged in pieces. unit is 'min'
-                                   // (time, 5-1440), 'ml' (water, 100-10000) or 'oz' (4-340).
+                                   // (time, 5-1440), 'ml' (water, 100-10000) or 'oz' (water in
+                                   // whole fl oz, 4-384). display ('cup' or 'gal') is how an oz
+                                   // goal is shown and typed (1 cup = 8 fl oz, 1 gal = 128 fl oz).
   }],
   days: {
     '2026-09-01': { habits: [{ id: 'h1', name: 'Workout', workout: 'Legs' }, { id: 'h2', name: 'Run', flex: true, target: 3 },
