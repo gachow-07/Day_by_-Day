@@ -9,8 +9,8 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="preload" href="fonts/instrument-sans-latin-var.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/styles.css?v=14">
-  <script src="js/theme.js?v=14"></script>
+  <link rel="stylesheet" href="css/styles.css?v=15">
+  <script src="js/theme.js?v=15"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -243,6 +243,7 @@
             <p class="caption" id="gh-caption"></p>
             <ul class="gh-legend" aria-label="Goal history key">
               <li><span class="gh-cell is-done" aria-hidden="true"></span>Done</li>
+              <li><span class="gh-cell is-partial" aria-hidden="true"></span>Partly</li>
               <li><span class="gh-cell is-missed" aria-hidden="true"></span>Missed</li>
               <li><span class="gh-cell is-none" aria-hidden="true"></span>Not due</li>
             </ul>
@@ -447,6 +448,22 @@
       </fieldset>
 
       <fieldset class="field">
+        <legend class="label">Track</legend>
+        <div class="radio-list" id="gf-track">
+          <label class="radio"><input type="radio" name="gf-track" value="check" checked><span>Check it off</span></label>
+          <label class="radio"><input type="radio" name="gf-track" value="time"><span>Time, logged in pieces</span></label>
+          <div id="gf-duration-wrap" class="duration-fields inline-field" role="group" aria-label="Daily time goal" hidden>
+            <input id="gf-dur-h" class="input input-sm num-input" type="number" min="0" max="24" step="1" inputmode="numeric" value="1">
+            <label for="gf-dur-h" class="label-inline">h</label>
+            <input id="gf-dur-m" class="input input-sm num-input" type="number" min="0" max="59" step="5" inputmode="numeric" value="0">
+            <label for="gf-dur-m" class="label-inline">min a day</label>
+          </div>
+        </div>
+        <p class="field-hint" id="gf-track-hint">Anything can be marked partly done from its ⋯ menu.</p>
+        <p id="gf-track-error" class="field-error" hidden></p>
+      </fieldset>
+
+      <fieldset class="field">
         <legend class="label">Workout split</legend>
         <label class="checkbox"><input type="checkbox" id="gf-split"><span>Rotate through workouts</span></label>
         <div id="gf-split-wrap" class="split-fields" hidden>
@@ -489,13 +506,31 @@
 
   <div id="toast" class="toast" aria-hidden="true" hidden></div>
 
-  <div id="workout-menu" class="menu" role="menu" aria-labelledby="workout-menu-title" hidden>
-    <p class="menu-title" id="workout-menu-title">Did something else?</p>
-    <p class="menu-sub" id="workout-menu-sub"></p>
-    <div id="workout-menu-items"></div>
+  <div id="goal-menu" class="menu" role="menu" aria-labelledby="goal-menu-title" hidden>
+    <p class="menu-title" id="goal-menu-title"></p>
+    <p class="menu-sub" id="goal-menu-sub"></p>
+    <div id="goal-menu-items"></div>
     <div class="menu-sep" role="separator"></div>
-    <button type="button" class="menu-item" role="menuitem" id="workout-menu-edit" tabindex="-1"><span>Edit split</span></button>
+    <button type="button" class="menu-item" role="menuitem" id="goal-menu-edit" data-action="edit" tabindex="-1"><span class="menu-label">Edit goal</span></button>
   </div>
+
+  <dialog id="log-dialog" class="dialog" aria-labelledby="log-title" aria-describedby="log-sub">
+    <form id="log-form" novalidate>
+      <h2 id="log-title" class="dialog-title">Log time</h2>
+      <p id="log-sub" class="dialog-message"></p>
+      <div class="duration-fields" role="group" aria-label="How long">
+        <input id="log-hours" class="input input-sm num-input" type="number" min="0" max="24" step="1" inputmode="numeric" value="0">
+        <label for="log-hours" class="label-inline">h</label>
+        <input id="log-mins" class="input input-sm num-input" type="number" min="0" max="59" step="5" inputmode="numeric" value="30">
+        <label for="log-mins" class="label-inline">min</label>
+      </div>
+      <p id="log-error" class="field-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" id="log-cancel" class="btn btn-secondary">Cancel</button>
+        <button type="submit" class="btn btn-primary">Log time</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="day-dialog" class="dialog sheet day-sheet" aria-labelledby="day-dialog-title">
     <div class="sheet-head">
@@ -516,14 +551,14 @@
     </form>
   </dialog>
 
-  <script src="js/icons.js?v=14"></script>
-  <script src="js/core.js?v=14"></script>
-  <script src="js/stats.js?v=14"></script>
-  <script src="js/plans.js?v=14"></script>
-  <script src="js/storage.js?v=14"></script>
-  <script src="js/sync.js?v=14"></script>
-  <script src="js/firebase-config.js?v=14"></script>
-  <script src="js/cloud.js?v=14"></script>
-  <script src="js/app.js?v=14"></script>
+  <script src="js/icons.js?v=15"></script>
+  <script src="js/core.js?v=15"></script>
+  <script src="js/stats.js?v=15"></script>
+  <script src="js/plans.js?v=15"></script>
+  <script src="js/storage.js?v=15"></script>
+  <script src="js/sync.js?v=15"></script>
+  <script src="js/firebase-config.js?v=15"></script>
+  <script src="js/cloud.js?v=15"></script>
+  <script src="js/app.js?v=15"></script>
 </body>
 </html>

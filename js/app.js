@@ -401,6 +401,9 @@
     var mark = el('span', 'goal-box');
     mark.setAttribute('aria-hidden', 'true');
     mark.appendChild(icon('check', 16));
+    var dash = icon('minus', 16);
+    dash.classList.add('goal-box-partial');
+    mark.appendChild(dash);
     label.appendChild(mark);
     var chip = goalChip(habit);
     if (chip) label.appendChild(chip);
@@ -419,60 +422,126 @@
     text.appendChild(meta);
     label.appendChild(text);
     li.appendChild(label);
-    if (entry.workout && habit && habit.split) {
-      label.classList.add('has-more');
-      var more = el('button', 'goal-more');
+    if (habit) {
+      var timedGoal = !!entry.minutes;
+      label.classList.add(timedGoal ? 'has-log' : 'has-more');
+      var more = el('button', timedGoal ? 'goal-more goal-log' : 'goal-more');
       more.type = 'button';
       more.id = 'goal-more-' + entry.id;
       more.dataset.moreFor = entry.id;
       more.setAttribute('aria-haspopup', 'menu');
       more.setAttribute('aria-expanded', 'false');
-      more.setAttribute('aria-controls', 'workout-menu');
-      more.setAttribute('aria-label', 'Workout options for ' + entry.name);
-      more.dataset.tip = 'Did a different workout?';
-      more.appendChild(icon('ellipsis', 18));
+      more.setAttribute('aria-controls', 'goal-menu');
+      if (timedGoal) {
+        more.appendChild(icon('plus', 16));
+        more.appendChild(el('span', '', 'Log'));
+        more.setAttribute('aria-label', 'Log time for ' + entry.name);
+      } else {
+        more.appendChild(icon('ellipsis', 18));
+        more.setAttribute('aria-label', 'More for ' + entry.name);
+        more.dataset.tip = entry.workout ? 'Partly done, workouts and more' : 'Partly done and more';
+      }
       li.appendChild(more);
     }
     return li;
   }
 
-  /* ---------------- Workout menu ---------------- */
+  /* ---------------- Goal menu: time, partly done, workouts ---------------- */
 
-  var menuFor = null; // goal id the workout menu is open for
+  var menuFor = null; // goal id the menu is open for
+  var LOG_AMOUNTS = [15, 30, 60, 120];
+
+  /** 90 → "1 h 30 min", 45 → "45 min", 120 → "2 h". */
+  function formatDuration(minutes) {
+    var h = Math.floor(minutes / 60);
+    var m = minutes % 60;
+    if (!h) return m + ' min';
+    return h + ' h' + (m ? ' ' + m + ' min' : '');
+  }
 
   function upcomingLabel(u, k) {
     if (u.date) return u.date === core.addDays(today, 1) ? 'Planned tomorrow' : 'Planned ' + formatDate(u.date, 'dowShort') + ', ' + formatDate(u.date, 'short');
     return k === 0 ? 'Up next' : 'In ' + (k + 1) + ' sessions';
   }
 
-  function openWorkoutMenu(button) {
+  function menuButton(className, action, label, hint) {
+    var b = el('button', className);
+    b.type = 'button';
+    b.setAttribute('role', 'menuitem');
+    b.tabIndex = -1;
+    b.dataset.action = action;
+    if (hint) {
+      var t = el('span', 'menu-text');
+      t.appendChild(el('span', 'menu-label', label));
+      t.appendChild(el('span', 'menu-hint', hint));
+      b.appendChild(t);
+    } else {
+      b.appendChild(el('span', 'menu-label', label));
+    }
+    return b;
+  }
+
+  function todayEntry(id) {
+    var rec = state.days[today];
+    return rec ? rec.habits.filter(function (e) { return e.id === id; })[0] || null : null;
+  }
+
+  function openGoalMenu(button) {
     var id = button.dataset.moreFor;
     var h = core.findHabit(state, id);
     var rec = state.days[today];
-    var entry = rec && rec.habits.filter(function (e) { return e.id === id; })[0];
-    if (!h || !h.split || !entry || !entry.workout) return;
-    closeWorkoutMenu(false);
+    var entry = todayEntry(id);
+    if (!h || !entry) return;
+    closeGoalMenu(false);
     menuFor = id;
-    var menu = $('workout-menu');
-    $('workout-menu-sub').textContent = 'Today: ' + entry.workout + '. Pick what you did and they’ll swap days.';
-    var items = $('workout-menu-items');
+    var menu = $('goal-menu');
+    var items = $('goal-menu-items');
     items.textContent = '';
-    var seen = {};
-    core.upcomingWorkouts(state, id, today).forEach(function (u, k) {
-      if (u.workout === entry.workout || seen[u.workout]) return;
-      seen[u.workout] = true;
-      var b = el('button', 'menu-item');
-      b.type = 'button';
-      b.setAttribute('role', 'menuitem');
-      b.tabIndex = -1;
-      b.dataset.workout = u.workout;
-      b.appendChild(icon('arrow-left-right', 16));
-      var t = el('span', 'menu-text');
-      t.appendChild(el('span', 'menu-label', u.workout));
-      t.appendChild(el('span', 'menu-hint', upcomingLabel(u, k)));
-      b.appendChild(t);
-      items.appendChild(b);
-    });
+    $('goal-menu-title').textContent = entry.name;
+    var sub = [];
+
+    if (entry.minutes) {
+      var logged = core.loggedMinutes(rec, id);
+      sub.push((logged ? formatDuration(logged) : 'Nothing') + ' of ' + formatDuration(entry.minutes) + ' today');
+      var chips = el('div', 'menu-chips');
+      chips.setAttribute('role', 'group');
+      chips.setAttribute('aria-label', 'Log time');
+      LOG_AMOUNTS.forEach(function (m) {
+        var b = menuButton('menu-item menu-chip', 'log', '+' + formatDuration(m));
+        b.dataset.minutes = String(m);
+        b.setAttribute('aria-label', 'Log ' + formatDuration(m));
+        chips.appendChild(b);
+      });
+      items.appendChild(chips);
+      items.appendChild(menuButton('menu-item', 'log-custom', 'Other amount…'));
+      var list = rec.logs && rec.logs[id];
+      if (list && list.length) items.appendChild(menuButton('menu-item', 'undo', 'Undo last', formatDuration(list[list.length - 1])));
+    } else {
+      var isPartial = !!(rec.partial && rec.partial.indexOf(id) >= 0);
+      var p = menuButton('menu-item', 'partial', 'Partly done', isPartial ? 'Tap to clear' : 'Counts as half');
+      p.setAttribute('role', 'menuitemcheckbox');
+      p.setAttribute('aria-checked', String(isPartial));
+      p.classList.toggle('is-checked', isPartial);
+      items.appendChild(p);
+    }
+
+    if (entry.workout && h.split) {
+      sub.push('Today: ' + entry.workout);
+      var head = el('p', 'menu-section', 'Did a different workout?');
+      head.setAttribute('role', 'presentation');
+      items.appendChild(head);
+      var seen = {};
+      core.upcomingWorkouts(state, id, today).forEach(function (u, k) {
+        if (u.workout === entry.workout || seen[u.workout]) return;
+        seen[u.workout] = true;
+        var b = menuButton('menu-item', 'swap', u.workout, upcomingLabel(u, k));
+        b.dataset.workout = u.workout;
+        items.appendChild(b);
+      });
+    }
+
+    $('goal-menu-sub').textContent = sub.join(' · ');
+    $('goal-menu-sub').hidden = !sub.length;
     menu.hidden = false;
     button.setAttribute('aria-expanded', 'true');
     placeMenu(menu, button);
@@ -493,8 +562,8 @@
     menu.style.top = (top + window.scrollY) + 'px';
   }
 
-  function closeWorkoutMenu(focusButton) {
-    var menu = $('workout-menu');
+  function closeGoalMenu(focusButton) {
+    var menu = $('goal-menu');
     if (menu.hidden) return;
     menu.hidden = true;
     var button = menuFor && $('goal-more-' + menuFor);
@@ -505,43 +574,143 @@
     menuFor = null;
   }
 
-  function onWorkoutMenuKey(event) {
-    var items = Array.prototype.slice.call($('workout-menu').querySelectorAll('.menu-item'));
+  function onGoalMenuKey(event) {
+    var items = Array.prototype.slice.call($('goal-menu').querySelectorAll('.menu-item'));
     var i = items.indexOf(document.activeElement);
     var to = null;
-    if (event.key === 'ArrowDown') to = (i + 1) % items.length;
-    else if (event.key === 'ArrowUp') to = (i - 1 + items.length) % items.length;
+    if (event.key === 'ArrowDown' || (event.key === 'ArrowRight' && document.activeElement.classList.contains('menu-chip'))) to = (i + 1) % items.length;
+    else if (event.key === 'ArrowUp' || (event.key === 'ArrowLeft' && document.activeElement.classList.contains('menu-chip'))) to = (i - 1 + items.length) % items.length;
     else if (event.key === 'Home') to = 0;
     else if (event.key === 'End') to = items.length - 1;
-    else if (event.key === 'Escape') { event.preventDefault(); closeWorkoutMenu(true); return; }
-    else if (event.key === 'Tab') { closeWorkoutMenu(false); return; }
+    else if (event.key === 'Escape') { event.preventDefault(); closeGoalMenu(true); return; }
+    else if (event.key === 'Tab') { closeGoalMenu(false); return; }
     if (to === null) return;
     event.preventDefault();
     items[to].focus();
   }
 
-  function onWorkoutPick(event) {
+  function focusGoalButton(id) {
+    var button = $('goal-more-' + id);
+    if (button) button.focus();
+  }
+
+  function onGoalMenuPick(event) {
     var item = event.target.closest('.menu-item');
     if (!item) return;
     var id = menuFor;
-    if (item.id === 'workout-menu-edit') {
-      closeWorkoutMenu(true);
-      openGoalForm(id);
+    var action = item.dataset.action;
+    closeGoalMenu(true);
+    if (action === 'edit') { openGoalForm(id); return; }
+    if (action === 'log-custom') { openLogDialog(id); return; }
+    checkForNewDay();
+    if (holdForAccount()) return;
+    if (action === 'log') { logMinutes(id, Number(item.dataset.minutes)); return; }
+    if (action === 'undo') {
+      var u = core.undoLog(state, id, today);
+      if (!u.ok) { announce(u.message); return; }
+      if (commit(u.state)) {
+        var e = todayEntry(id);
+        announce('Removed ' + formatDuration(u.removed) + '. ' + progressText(e) + '.');
+        showToast('Removed ' + formatDuration(u.removed) + ' from ' + e.name + '.');
+      }
+      focusGoalButton(id);
       return;
     }
-    checkForNewDay();
-    closeWorkoutMenu(true);
-    if (holdForAccount()) return;
-    var r = core.swapWorkout(state, id, item.dataset.workout, today);
-    if (!r.ok) { announce(r.message); renderToday(); return; }
-    if (r.unchanged || !commit(r.state)) return;
-    var when = r.movedTo.date
-      ? (r.movedTo.date === core.addDays(today, 1) ? 'tomorrow' : formatDate(r.movedTo.date, 'dowLong'))
-      : 'its place in the rotation';
-    var button = $('goal-more-' + id);
-    if (button) button.focus();
-    announce('Today is now ' + item.dataset.workout + '. ' + r.planned + ' moved to ' + when + '.');
-    showToast('Swapped: ' + item.dataset.workout + ' today, ' + r.planned + ' ' + (r.movedTo.date ? (when === 'tomorrow' ? 'tomorrow' : 'on ' + when) : 'later') + '.');
+    if (action === 'partial') {
+      var on = item.getAttribute('aria-checked') !== 'true';
+      var pr = core.setHabitPartial(state, id, on, today);
+      if (!pr.ok) { announce(pr.message); return; }
+      if (commit(pr.state)) announce(todayEntry(id).name + (on ? ' marked partly done.' : ' no longer partly done.'));
+      focusGoalButton(id);
+      return;
+    }
+    if (action === 'swap') {
+      var r = core.swapWorkout(state, id, item.dataset.workout, today);
+      if (!r.ok) { announce(r.message); renderToday(); return; }
+      if (r.unchanged || !commit(r.state)) return;
+      var when = r.movedTo.date
+        ? (r.movedTo.date === core.addDays(today, 1) ? 'tomorrow' : formatDate(r.movedTo.date, 'dowLong'))
+        : 'its place in the rotation';
+      focusGoalButton(id);
+      announce('Today is now ' + item.dataset.workout + '. ' + r.planned + ' moved to ' + when + '.');
+      showToast('Swapped: ' + item.dataset.workout + ' today, ' + r.planned + ' ' + (r.movedTo.date ? (when === 'tomorrow' ? 'tomorrow' : 'on ' + when) : 'later') + '.');
+    }
+  }
+
+  function progressText(entry) {
+    var logged = core.loggedMinutes(state.days[today], entry.id);
+    return formatDuration(logged) + ' of ' + formatDuration(entry.minutes);
+  }
+
+  /** Log time for a timed goal and say how it's going. Returns true when saved. */
+  function logMinutes(id, minutes) {
+    var r = core.logTime(state, id, minutes, today);
+    if (!r.ok) { announce(r.message); return false; }
+    var wasDone = state.days[today].done.indexOf(id) >= 0;
+    if (!commit(r.state)) return false;
+    var entry = todayEntry(id);
+    var reached = r.done && !wasDone;
+    if (reached) {
+      var row = $('goal-' + id).parentNode;
+      row.classList.remove('just-done');
+      void row.offsetWidth;
+      row.classList.add('just-done');
+    }
+    var s = core.recordSummary(state.days[today]);
+    if (r.lockedIn && reached) {
+      announce('Logged ' + formatDuration(minutes) + '. ' + entry.name + ' done, and the day is locked in.');
+    } else {
+      announce('Logged ' + formatDuration(minutes) + '. ' + progressText(entry) + (reached ? '. ' + entry.name + ' done.' : '.') +
+        (reached && s.total ? ' ' + s.completed + ' of ' + s.total + ' goals done today.' : ''));
+    }
+    showToast(reached ? entry.name + ' done: ' + formatDuration(r.logged) + '.' : '+' + formatDuration(minutes) + ' · ' + progressText(entry));
+    focusGoalButton(id);
+    return true;
+  }
+
+  /* Log dialog: any amount of time */
+
+  var loggingId = null;
+
+  function openLogDialog(id) {
+    var entry = todayEntry(id);
+    if (!entry || !entry.minutes) return;
+    loggingId = id;
+    $('log-title').textContent = 'Log time for ' + entry.name;
+    $('log-sub').textContent = progressText(entry) + ' so far.';
+    $('log-hours').value = '0';
+    $('log-mins').value = '30';
+    $('log-error').hidden = true;
+    dialogOpeners['log-dialog'] = $('goal-more-' + id);
+    openDialog('log-dialog', $('log-mins'));
+    dialogOpeners['log-dialog'] = $('goal-more-' + id);
+  }
+
+  function readDuration(hoursEl, minsEl) {
+    var h = hoursEl.value.trim() === '' ? 0 : Number(hoursEl.value);
+    var m = minsEl.value.trim() === '' ? 0 : Number(minsEl.value);
+    if (!Number.isInteger(h) || !Number.isInteger(m) || h < 0 || m < 0) return NaN;
+    return h * 60 + m;
+  }
+
+  function onLogSubmit(event) {
+    event.preventDefault();
+    var minutes = readDuration($('log-hours'), $('log-mins'));
+    var error = !(minutes > 0) ? 'Enter how long, like 0 h 30 min.' : '';
+    if (!error) {
+      checkForNewDay();
+      if (holdForAccount()) { closeDialog('log-dialog'); return; }
+      var r = core.logTime(state, loggingId, minutes, today);
+      if (!r.ok) error = r.message;
+    }
+    if (error) {
+      $('log-error').textContent = error;
+      $('log-error').hidden = false;
+      $('log-mins').focus();
+      return;
+    }
+    closeDialog('log-dialog');
+    logMinutes(loggingId, minutes);
   }
 
   var toastTimer = null;
@@ -553,15 +722,22 @@
     toastTimer = setTimeout(function () { t.hidden = true; }, 4000);
   }
 
-  function goalMeta(entry, done) {
+  function goalMeta(entry, done, rec) {
     var habit = core.findHabit(state, entry.id);
+    var parts = [];
+    if (entry.minutes) {
+      var logged = rec ? core.loggedMinutes(rec, entry.id) : 0;
+      parts.push(logged ? formatDuration(logged) + ' of ' + formatDuration(entry.minutes) : formatDuration(entry.minutes));
+    } else if (rec && rec.partial && rec.partial.indexOf(entry.id) >= 0) {
+      parts.push('Partly done');
+    }
     if (entry.flex) {
       var count = stats.weeklyProgress(state, today, weekStart(), entry.id);
-      var met = count >= entry.target;
-      return count + ' of ' + entry.target + ' this week' + (met ? ' · done' : '');
+      parts.push(count + ' of ' + entry.target + ' this week' + (count >= entry.target ? ' · done' : ''));
+    } else if (habit && habit.reminder && !done) {
+      parts.push(formatTime(habit.reminder));
     }
-    if (habit && habit.reminder && !done) return formatTime(habit.reminder);
-    return '';
+    return parts.join(' · ');
   }
 
   function renderToday() {
@@ -598,7 +774,7 @@
       required.forEach(function (e) { list.appendChild(buildGoalRow(e)); });
       flexible.forEach(function (e) { flexList.appendChild(buildGoalRow(e)); });
       renderedGoalSignature = signature;
-      closeWorkoutMenu(false);
+      closeGoalMenu(false);
     }
     $('goal-list').hidden = !required.length;
     $('flex-section').hidden = !flexible.length;
@@ -606,11 +782,15 @@
     Array.prototype.forEach.call(document.querySelectorAll('#goals-card .goal-check'), function (box) {
       var id = box.dataset.habitId;
       var isDone = done.indexOf(id) >= 0;
-      box.checked = isDone;
-      box.parentNode.classList.toggle('is-done', isDone);
       var entry = rec.habits.filter(function (h) { return h.id === id; })[0];
+      var isPartial = !isDone && !!entry && !rec.preview && core.entryProgress(rec, entry) === 'partial';
+      box.checked = isDone;
+      box.indeterminate = isPartial;
+      if (isPartial) box.nextSibling.style.setProperty('--fill', Math.round(core.entryCredit(rec, entry) * 100) + '%');
+      box.parentNode.classList.toggle('is-done', isDone);
+      box.parentNode.classList.toggle('is-partial', isPartial);
       var meta = document.querySelector('[data-meta-for="' + id + '"]');
-      meta.textContent = entry ? goalMeta(entry, isDone) : '';
+      meta.textContent = entry ? goalMeta(entry, isDone, rec.preview ? null : rec) : '';
       meta.hidden = !meta.textContent;
       meta.parentNode.hidden = meta.hidden && !entry.workout;
     });
@@ -628,7 +808,7 @@
 
     // Hero: today's tile fills as goals are done; the week strip shows the days before
     var hero = $('hero');
-    var ratio = s.total ? s.completed / s.total : 0;
+    var ratio = s.total ? s.credit / s.total : 0;
     hero.classList.toggle('is-locked', s.lockedIn);
     var tile = $('today-progress');
     tile.setAttribute('aria-valuemax', String(s.total));
@@ -710,6 +890,8 @@
     }
     var s = core.recordSummary(state.days[today]);
     var name = box.parentNode.querySelector('.goal-name').textContent;
+    var tEntry = todayEntry(box.dataset.habitId);
+    if (tEntry && tEntry.minutes) name += ' (' + progressText(tEntry) + ')';
     if (r.lockedIn && box.checked) {
       announce('Day locked in. All ' + plural(s.total, 'goal') + ' done. Locked-in streak: ' + plural(stats.currentStreak(state, today), 'day') + '.');
     } else {
@@ -807,6 +989,7 @@
 
   function goalSub(h) {
     var parts = [scheduleText(h.schedule)];
+    if (h.minutes) parts.push(formatDuration(h.minutes) + ' a day');
     if (h.split) parts.push(h.split.workouts.length + '-workout split');
     if (h.reminder) parts.push('Reminder at ' + formatTime(h.reminder));
     if (h.status === 'paused') parts.unshift('Paused');
@@ -1052,6 +1235,7 @@
     $('gf-times-wrap').hidden = type !== 'weekly';
     $('gf-remind-wrap').hidden = !$('gf-remind').checked;
     $('gf-split-wrap').hidden = !$('gf-split').checked;
+    $('gf-duration-wrap').hidden = document.querySelector('input[name="gf-track"]:checked').value !== 'time';
   }
 
   function formWorkouts() {
@@ -1118,6 +1302,11 @@
     $('gf-remind').disabled = !plans.can('reminders');
     $('gf-time').value = h && h.reminder ? h.reminder : '09:00';
     $('gf-remind-hint').textContent = reminderHint();
+    var timedGoal = !!(h && h.minutes);
+    document.querySelector('input[name="gf-track"][value="' + (timedGoal ? 'time' : 'check') + '"]').checked = true;
+    $('gf-dur-h').value = String(timedGoal ? Math.floor(h.minutes / 60) : 1);
+    $('gf-dur-m').value = String(timedGoal ? h.minutes % 60 : 0);
+    $('gf-track-error').hidden = true;
     $('gf-split').checked = !!(h && h.split);
     $('gf-workouts').value = h && h.split ? h.split.workouts.join('\n') : '';
     $('gf-workouts').removeAttribute('aria-invalid');
@@ -1159,7 +1348,8 @@
       color: colorInput && colorInput.value ? colorInput.value : null,
       schedule: schedule,
       reminder: $('gf-remind').checked ? ($('gf-time').value || null) : null,
-      split: $('gf-split').checked ? { workouts: formWorkouts(), current: Number($('gf-next').value) || 0 } : null
+      split: $('gf-split').checked ? { workouts: formWorkouts(), current: Number($('gf-next').value) || 0 } : null,
+      minutes: document.querySelector('input[name="gf-track"]:checked').value === 'time' ? readDuration($('gf-dur-h'), $('gf-dur-m')) : null
     };
   }
 
@@ -1186,11 +1376,15 @@
     if (nameError) { $('gf-name').focus(); return; }
     if (sch.error) { $('gf-schedule').querySelector('input:checked').focus(); return; }
     if (sp.error) { $('gf-workouts').focus(); return; }
+    var minsError = v.minutes !== null && !(v.minutes >= core.MIN_GOAL_MINUTES && v.minutes <= 1440) ? 'Set a time goal between 5 minutes and 24 hours.' : '';
+    $('gf-track-error').textContent = minsError;
+    $('gf-track-error').hidden = !minsError;
+    if (minsError) { $('gf-dur-h').focus(); return; }
     var existing = editingId && core.findHabit(state, editingId);
     if (existing && !v.split && !existing.split) delete v.split;
     var r = editingId
       ? core.updateHabit(state, editingId, v, today)
-      : core.addHabit(state, v.name, today, { icon: v.icon, color: v.color, schedule: v.schedule, reminder: v.reminder, split: v.split });
+      : core.addHabit(state, v.name, today, { icon: v.icon, color: v.color, schedule: v.schedule, reminder: v.reminder, split: v.split, minutes: v.minutes });
     if (!r.ok) {
       $('gf-error').textContent = r.message;
       $('gf-error').hidden = false;
@@ -1414,13 +1608,16 @@
     }
     var ul = el('ul', 'detail-list');
     d.items.forEach(function (item) {
-      var li = el('li', item.done ? 'is-done' : 'is-missed');
-      li.appendChild(icon(item.done ? 'circle-check' : 'x', 18));
+      var part = !item.done && item.progress === 'partial';
+      var li = el('li', item.done ? 'is-done' : part ? 'is-partial' : 'is-missed');
+      li.appendChild(icon(item.done ? 'circle-check' : part ? 'minus' : 'x', 18));
       var text = el('span');
       text.appendChild(document.createTextNode(item.name));
       if (item.workout) text.appendChild(el('span', 'detail-flex', ' · ' + item.workout));
+      if (item.minutes) text.appendChild(el('span', 'detail-flex', ' · ' + formatDuration(item.logged) + ' of ' + formatDuration(item.minutes)));
+      else if (part) text.appendChild(el('span', 'detail-flex', ' · partly done'));
       if (item.flexible) text.appendChild(el('span', 'detail-flex', ' · weekly'));
-      text.appendChild(el('span', 'visually-hidden', item.done ? ' (done)' : ' (not done)'));
+      text.appendChild(el('span', 'visually-hidden', item.done ? ' (done)' : part ? ' (partly done)' : ' (not done)'));
       li.appendChild(text);
       ul.appendChild(li);
     });
@@ -1531,7 +1728,7 @@
   /* Goal history: one card per goal with a contribution grid (a dropdown) */
 
   var GH_KEY = 'day-by-day.goal-history-open';
-  var GH_STATE_TEXT = { done: 'done', missed: 'missed', open: 'not done (weekly goal)', pending: 'not done yet', none: 'not due', future: '' };
+  var GH_STATE_TEXT = { partial: 'partly done', done: 'done', missed: 'missed', open: 'not done (weekly goal)', pending: 'not done yet', none: 'not due', future: '' };
 
   function goalHistoryWeeks() {
     var list = $('goal-history-list');
@@ -2371,7 +2568,7 @@
     // Goal form
     $('goal-form').addEventListener('submit', onGoalFormSubmit);
     $('goal-form').addEventListener('change', function (e) {
-      if (e.target.name === 'gf-schedule' || e.target.id === 'gf-remind' || e.target.id === 'gf-split') syncScheduleFields();
+      if (e.target.name === 'gf-schedule' || e.target.name === 'gf-track' || e.target.id === 'gf-remind' || e.target.id === 'gf-split') syncScheduleFields();
       if (e.target.name === 'gf-schedule' || e.target.name === 'gf-days' || e.target.closest('#gf-days')) syncSplitChoices();
       if (e.target.id === 'gf-next') $('gf-next').dataset.name = formWorkouts()[Number($('gf-next').value)] || '';
       if (e.target.id === 'gf-split' && e.target.checked && !formWorkouts().length) $('gf-workouts').focus();
@@ -2382,15 +2579,18 @@
     $('goals-card').addEventListener('click', function (e) {
       var more = e.target.closest('.goal-more');
       if (!more) return;
-      if (menuFor === more.dataset.moreFor) closeWorkoutMenu(true);
-      else openWorkoutMenu(more);
+      if (menuFor === more.dataset.moreFor) closeGoalMenu(true);
+      else openGoalMenu(more);
     });
-    $('workout-menu').addEventListener('click', onWorkoutPick);
-    $('workout-menu').addEventListener('keydown', onWorkoutMenuKey);
+    $('goal-menu').addEventListener('click', onGoalMenuPick);
+    $('goal-menu').addEventListener('keydown', onGoalMenuKey);
+    $('log-form').addEventListener('submit', onLogSubmit);
+    $('log-cancel').addEventListener('click', function () { closeDialog('log-dialog'); });
+    $('log-dialog').addEventListener('close', function () { restoreFocus('log-dialog', $('goal-list')); loggingId = null; });
     document.addEventListener('pointerdown', function (e) {
-      if (menuFor && !e.target.closest('#workout-menu') && !e.target.closest('.goal-more')) closeWorkoutMenu(false);
+      if (menuFor && !e.target.closest('#goal-menu') && !e.target.closest('.goal-more')) closeGoalMenu(false);
     });
-    window.addEventListener('resize', function () { closeWorkoutMenu(false); });
+    window.addEventListener('resize', function () { closeGoalMenu(false); });
     $('goal-form-close').addEventListener('click', function () { closeDialog('goal-form-dialog'); });
     $('gf-cancel').addEventListener('click', function () { closeDialog('goal-form-dialog'); });
     $('gf-pause').addEventListener('click', onGoalPause);

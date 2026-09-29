@@ -1105,6 +1105,34 @@ main:focus,
   color: var(--text-2);
 }
 
+.menu-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px var(--s-2) var(--s-2);
+}
+
+.menu-item.menu-chip {
+  width: auto;
+  min-height: 36px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-strong);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.menu-section {
+  margin: var(--s-3) var(--s-2) 2px;
+  font-size: var(--text-meta);
+  font-weight: var(--weight-medium);
+  color: var(--text-2);
+}
+
+.menu-item.is-checked .menu-label::after {
+  content: " ✓";
+  color: var(--warning);
+}
+
 .menu-sep {
   height: 1px;
   margin: var(--s-1) var(--s-2);
@@ -1414,6 +1442,10 @@ main:focus,
   padding-right: 48px;
 }
 
+.goal.has-log {
+  padding-right: 76px;
+}
+
 .goal-check {
   position: absolute;
   opacity: 0;
@@ -1456,6 +1488,25 @@ main:focus,
 .goal-check:checked + .goal-box .icon {
   opacity: 1;
   transform: none;
+}
+
+/* Partly done: the tile fills up to how much is done (half for "partly
+ * done", the share of time logged for timed goals). */
+.goal-box {
+  position: relative;
+}
+
+.goal-box .goal-box-partial {
+  display: none;
+}
+
+.goal-check:indeterminate + .goal-box {
+  background: linear-gradient(to top, var(--warning) var(--fill, 50%), transparent var(--fill, 50%));
+  border-color: var(--warning);
+}
+
+.goal-check:indeterminate + .goal-box .icon {
+  opacity: 0;
 }
 
 .goal-check:focus-visible + .goal-box {
@@ -1551,6 +1602,21 @@ main:focus,
   background: transparent;
   color: var(--text-2);
   cursor: pointer;
+}
+
+.goal-log {
+  width: auto;
+  gap: 4px;
+  padding: 0 var(--s-3) 0 var(--s-2);
+  border: 1px solid var(--border-strong);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text);
+}
+
+.goal-log .icon {
+  width: 16px;
+  height: 16px;
 }
 
 .goal-more:hover,
@@ -1926,6 +1992,7 @@ button.cal-cell:hover {
 
 .detail-list .icon { width: 16px; height: 16px; margin-top: 2px; }
 .detail-list .is-done .icon { color: var(--accent); }
+.detail-list .is-partial .icon { color: var(--warning); }
 .detail-list .is-missed { color: var(--text-2); }
 .detail-list .is-missed .icon { color: var(--text-3); }
 .detail-flex { color: var(--text-3); font-size: var(--text-meta); }
@@ -2222,6 +2289,7 @@ button.cal-cell:hover {
 .gh-cell.is-done { background: var(--chip, var(--accent)); }
 .gh-cell.is-missed { background: color-mix(in srgb, var(--chip, var(--accent)) 24%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chip, var(--accent)) 45%, transparent); }
 .gh-cell.is-open { background: var(--tile-fill); }
+.gh-cell.is-partial { background: linear-gradient(to top, var(--chip, var(--accent)) 50%, color-mix(in srgb, var(--chip, var(--accent)) 24%, transparent) 50%); }
 .gh-cell.is-pending { background: transparent; box-shadow: inset 0 0 0 2px var(--chip, var(--accent)); }
 .gh-cell.is-future { visibility: hidden; }
 
@@ -2578,6 +2646,21 @@ button.cal-cell:hover {
   margin-left: 0;
 }
 
+.duration-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.dialog .duration-fields {
+  margin-top: var(--s-4);
+}
+
+.num-input {
+  width: 5rem;
+}
+
 .status-actions {
   padding-top: var(--s-4);
   border-top: 1px solid var(--border);
@@ -2611,6 +2694,11 @@ button.cal-cell:hover {
 
   .chart-line {
     stroke: Highlight;
+  }
+  .goal-check:indeterminate + .goal-box,
+  .gh-cell.is-partial {
+    background: GrayText;
+    forced-color-adjust: none;
   }
 }
 

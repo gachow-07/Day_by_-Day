@@ -130,8 +130,8 @@ test('challenge data (v2) becomes ongoing habits with day-by-day history', () =>
   assert.equal(r.fromVersion, 2);
   const s = r.state;
   assert.deepEqual(s.habits, [
-    { id: 'h1', name: 'Workout', createdOn: '2026-09-01', status: 'active', archivedOn: null, icon: null, color: null, schedule: { type: 'daily' }, reminder: null, split: null },
-    { id: 'h2', name: 'Read', createdOn: '2026-09-01', status: 'active', archivedOn: null, icon: null, color: null, schedule: { type: 'daily' }, reminder: null, split: null }
+    { id: 'h1', name: 'Workout', createdOn: '2026-09-01', status: 'active', archivedOn: null, icon: null, color: null, schedule: { type: 'daily' }, reminder: null, split: null, minutes: null },
+    { id: 'h2', name: 'Read', createdOn: '2026-09-01', status: 'active', archivedOn: null, icon: null, color: null, schedule: { type: 'daily' }, reminder: null, split: null, minutes: null }
   ]);
   // Attempt 1: Sep 1–3 done, Sep 4 missed; attempt 2 began Sep 5: Sep 5–6 done; Sep 7 half-done.
   assert.deepEqual(Object.keys(s.days).sort(), ['2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04', '2026-09-05', '2026-09-06', '2026-09-07']);
@@ -214,6 +214,7 @@ test('export contains schemaVersion, the full history and computed stats', () =>
     date: '2026-09-04',
     habits: [{ id: 'h1', name: 'Workout', done: true }, { id: 'h2', name: 'Read', done: false }, { id: 'h3', name: 'Drink water', done: false }],
     totalCompleted: 1,
+    credit: 1,
     totalPossible: 3,
     percentage: 33,
     lockedIn: false
