@@ -2581,6 +2581,28 @@ button.cal-cell:hover {
   position: relative;
 }
 
+/* Icon picker: named groups in a scrolling area, so the form stays short */
+.icon-choices {
+  position: relative;
+  max-height: 17rem;
+  overflow-y: auto;
+  padding: var(--s-1) 2px var(--s-3);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  overscroll-behavior: contain;
+}
+
+.icon-choices .choice-grid {
+  gap: 6px;
+}
+
+.choice-group-label {
+  margin: var(--s-4) 0 var(--s-2);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-medium);
+  color: var(--text-2);
+}
+
 .choice input {
   position: absolute;
   opacity: 0;
