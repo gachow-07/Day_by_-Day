@@ -227,7 +227,7 @@ A sharp, tactical console: high discipline, no soft shapes.
   - Open goals: plain card.
   - In progress or partly done: a 3px amber rail on the left.
   - Done: dimmed and struck through, with a green check.
-  - Time and water goals: a segmented progress bar and a `[ + LOG ]` trigger.
+  - Time and water goals: a segmented progress bar and a bordered `LOG` button.
 - **Focus** is a terminal-style `TARGET //` field with a bordered **Save** button.
 
 All styles come from tokens at the top of `css/styles.css` (colours for both themes, spacing, type, radii, motion). The tactical component styles are grouped at the end of the file.

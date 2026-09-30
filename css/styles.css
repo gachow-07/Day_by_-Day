@@ -3217,7 +3217,11 @@ button.cal-cell:hover {
 }
 
 .goal.has-log {
-  padding-right: 104px;
+  padding-right: 84px;
+}
+
+.goal-log-text {
+  text-transform: uppercase;
 }
 
 .add-goal {
