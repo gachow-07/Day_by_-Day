@@ -11,7 +11,7 @@
  */
 'use strict';
 
-var VERSION = '18';
+var VERSION = '19';
 var CACHE = 'day-by-day-v' + VERSION;
 var ASSETS = [
   './',
@@ -28,6 +28,7 @@ var ASSETS = [
   'js/cloud.js?v=' + VERSION,
   'js/app.js?v=' + VERSION,
   'fonts/instrument-sans-latin-var.woff2',
+  'fonts/jetbrains-mono-latin-var.woff2',
   'icon.svg',
   'manifest.webmanifest'
 ];

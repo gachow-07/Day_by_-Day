@@ -1,17 +1,25 @@
 /* =====================================================================
  * Day by Day — styles
  *
- * Visual idea: consistency is built one day at a time, so the one
- * recurring shape is the day tile, a small rounded square. It appears in
- * the mark, the week strip on Today, the goal checkboxes, the calendar and
- * the goal history grids. Everything else is kept quiet: warm neutral
- * surfaces, hierarchy from type and spacing, borders only where a region is
- * really separate (dialogs, menus, the day panel). Mint is kept for
- * completion, active navigation and the main action.
+ * Visual idea: a tactical, high-discipline console. Consistency is built
+ * one day at a time, so the recurring shape is the day tile: a sharp
+ * square in the week matrix, the goal checkboxes, the calendar and the
+ * goal history grids. Pitch-black base, gunmetal cards with hairline
+ * borders, 3-4px corners, uppercase labels, and JetBrains Mono for every
+ * number. Tactical green marks completion, amber marks partial progress.
+ * The "Tactical layer" at the end of this file styles the components.
  *
  * Colour pairs meet WCAG 2.1 AA (4.5:1 text, 3:1 for control boundaries,
  * focus rings and meaningful graphics); see README.
  * ===================================================================== */
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url("../fonts/jetbrains-mono-latin-var.woff2") format("woff2");
+}
 
 @font-face {
   font-family: "Instrument Sans";
@@ -33,6 +41,7 @@
   --s-8: 64px;
 
   /* Type */
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   --font: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --text-xs: 0.75rem;
   --text-meta: 0.8125rem;
@@ -49,11 +58,11 @@
   --leading: 1.5;
 
   /* Shape: tiles are rounded squares, everything else follows */
-  --radius-tile: 6px;
-  --radius-sm: 8px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-pill: 999px;
+  --radius-tile: 1px;
+  --radius-sm: 3px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-pill: 3px;
 
   /* Motion */
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -68,48 +77,48 @@
   --tabbar-h: 64px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 
-  /* ---- Dark (reference): warm charcoal, never pure black ---- */
-  --bg: #161512;
-  --surface-1: #1c1b18;
-  --surface-2: #25231f;
-  --surface-3: #2f2d28;
-  --border: rgba(237, 229, 216, 0.08);
-  --border-strong: rgba(237, 229, 216, 0.16);
-  --control-border: #7d776d;
-  --text: #ede9e1;
-  --text-2: #b4aea4;
-  --text-3: #9b958b;
-  --accent: #63cf9f;
-  --accent-strong: #88dcb6;
-  --accent-soft: rgba(99, 207, 159, 0.12);
-  --on-accent: #0c2419;
-  --focus: #9fc3ff;
-  --warning: #dcb152;
-  --warning-soft: rgba(220, 177, 82, 0.12);
-  --danger: #f09a8e;
-  --danger-soft: rgba(240, 154, 142, 0.12);
-  --on-danger: #2b0f0b;
-  --tile-empty: rgba(237, 229, 216, 0.07);
-  --tile-fill: rgba(237, 229, 216, 0.17);
-  --tile-locked: #2d5c46;
-  --tile-locked-text: #e3f5ec;
-  --tile-partial: #5e4c22;
-  --tile-partial-text: #f5e6c3;
-  --tile-missed: #4b2d29;
-  --tile-missed-text: #f1d9d3;
-  --grid: rgba(237, 229, 216, 0.07);
-  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
-  --backdrop: rgba(10, 9, 7, 0.62);
+  /* ---- Dark (reference): pitch-black base, gunmetal surfaces ---- */
+  --bg: #0d0e10;
+  --surface-1: #161719;
+  --surface-2: #1c1d20;
+  --surface-3: #26272b;
+  --border: #26272b;
+  --border-strong: #37383d;
+  --control-border: #66676e;
+  --text: #f4f4f5;
+  --text-2: #a9a9b1;
+  --text-3: #8d8d96;
+  --accent: #10b981;
+  --accent-strong: #34d399;
+  --accent-soft: rgba(16, 185, 129, 0.12);
+  --on-accent: #03140d;
+  --focus: #93c5fd;
+  --warning: #f59e0b;
+  --warning-soft: rgba(245, 158, 11, 0.12);
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.12);
+  --on-danger: #1f0707;
+  --tile-empty: #121315;
+  --tile-fill: #2c2d32;
+  --tile-locked: #0d5c43;
+  --tile-locked-text: #d1fae5;
+  --tile-partial: #5c3d06;
+  --tile-partial-text: #fde9c4;
+  --tile-missed: #3b1a1a;
+  --tile-missed-text: #fecaca;
+  --grid: #1f2023;
+  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px #26272b;
+  --backdrop: rgba(4, 5, 6, 0.72);
 
   /* Goal colours (the goal's icon and its history grid) */
-  --goal-jade: #63cf9f;
-  --goal-teal: #52c3c9;
-  --goal-sky: #79b3f2;
-  --goal-indigo: #a0a7f5;
-  --goal-violet: #c3a0f0;
-  --goal-rose: #f294ad;
-  --goal-amber: #e2b45a;
-  --goal-slate: #aca69c;
+  --goal-jade: #10b981;
+  --goal-teal: #2dd4bf;
+  --goal-sky: #60a5fa;
+  --goal-indigo: #a5b4fc;
+  --goal-violet: #c4b5fd;
+  --goal-rose: #fb7185;
+  --goal-amber: #f59e0b;
+  --goal-slate: #a1a1aa;
 
   color-scheme: dark;
 }
@@ -117,89 +126,89 @@
 /* Light: used when chosen, or when the device prefers light and the user
  * hasn't chosen Dark. Keep both blocks identical. */
 :root[data-theme="light"] {
-  --bg: #f4f1ea;
-  --surface-1: #faf8f3;
-  --surface-2: #ece8e0;
-  --surface-3: #e2ddd3;
-  --border: rgba(40, 32, 20, 0.1);
-  --border-strong: rgba(40, 32, 20, 0.19);
-  --control-border: #857e72;
-  --text: #1f1d19;
-  --text-2: #56514a;
-  --text-3: #686359;
-  --accent: #1a7a52;
-  --accent-strong: #13613f;
-  --accent-soft: #e4f2ea;
-  --on-accent: #f7fbf8;
-  --focus: #2a5fc9;
-  --warning: #8a6414;
-  --warning-soft: #f5ebd3;
-  --danger: #b0352b;
-  --danger-soft: #f8e3df;
-  --on-danger: #fcf8f6;
-  --tile-empty: rgba(40, 32, 20, 0.07);
-  --tile-fill: rgba(40, 32, 20, 0.15);
-  --tile-locked: #bfe2cf;
-  --tile-locked-text: #103b27;
-  --tile-partial: #efd9a0;
-  --tile-partial-text: #3b2d0b;
-  --tile-missed: #f0d4cd;
-  --tile-missed-text: #5c2119;
-  --grid: rgba(40, 32, 20, 0.08);
-  --shadow-lg: 0 18px 48px rgba(40, 32, 20, 0.14), 0 2px 6px rgba(40, 32, 20, 0.08);
-  --backdrop: rgba(40, 32, 20, 0.34);
-  --goal-jade: #1a7a52;
-  --goal-teal: #0f7178;
-  --goal-sky: #2766b3;
-  --goal-indigo: #4d55bf;
-  --goal-violet: #7a4fbf;
-  --goal-rose: #b23d67;
-  --goal-amber: #8a6414;
-  --goal-slate: #625d54;
+  --bg: #f3f3f1;
+  --surface-1: #fbfbfa;
+  --surface-2: #ececea;
+  --surface-3: #dedede;
+  --border: #d6d6d9;
+  --border-strong: #b9b9bf;
+  --control-border: #7c7c84;
+  --text: #0d0e10;
+  --text-2: #45454c;
+  --text-3: #5c5c64;
+  --accent: #047857;
+  --accent-strong: #065f46;
+  --accent-soft: #ddf3ea;
+  --on-accent: #f6fbf8;
+  --focus: #1d4ed8;
+  --warning: #b45309;
+  --warning-soft: #fbefd9;
+  --danger: #b91c1c;
+  --danger-soft: #fbe4e4;
+  --on-danger: #fdf7f7;
+  --tile-empty: #ececea;
+  --tile-fill: #cfcfd3;
+  --tile-locked: #a7e3cb;
+  --tile-locked-text: #053b2a;
+  --tile-partial: #f6d58e;
+  --tile-partial-text: #3d2a04;
+  --tile-missed: #f3cfcf;
+  --tile-missed-text: #5f1414;
+  --grid: #e2e2e4;
+  --shadow-lg: 0 18px 48px rgba(13, 14, 16, 0.14), 0 0 0 1px #d6d6d9;
+  --backdrop: rgba(13, 14, 16, 0.4);
+  --goal-jade: #047857;
+  --goal-teal: #0f766e;
+  --goal-sky: #1d4ed8;
+  --goal-indigo: #4338ca;
+  --goal-violet: #6d28d9;
+  --goal-rose: #be123c;
+  --goal-amber: #b45309;
+  --goal-slate: #52525b;
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --bg: #f4f1ea;
-    --surface-1: #faf8f3;
-    --surface-2: #ece8e0;
-    --surface-3: #e2ddd3;
-    --border: rgba(40, 32, 20, 0.1);
-    --border-strong: rgba(40, 32, 20, 0.19);
-    --control-border: #857e72;
-    --text: #1f1d19;
-    --text-2: #56514a;
-    --text-3: #686359;
-    --accent: #1a7a52;
-    --accent-strong: #13613f;
-    --accent-soft: #e4f2ea;
-    --on-accent: #f7fbf8;
-    --focus: #2a5fc9;
-    --warning: #8a6414;
-    --warning-soft: #f5ebd3;
-    --danger: #b0352b;
-    --danger-soft: #f8e3df;
-    --on-danger: #fcf8f6;
-    --tile-empty: rgba(40, 32, 20, 0.07);
-    --tile-fill: rgba(40, 32, 20, 0.15);
-    --tile-locked: #bfe2cf;
-    --tile-locked-text: #103b27;
-    --tile-partial: #efd9a0;
-    --tile-partial-text: #3b2d0b;
-    --tile-missed: #f0d4cd;
-    --tile-missed-text: #5c2119;
-    --grid: rgba(40, 32, 20, 0.08);
-    --shadow-lg: 0 18px 48px rgba(40, 32, 20, 0.14), 0 2px 6px rgba(40, 32, 20, 0.08);
-    --backdrop: rgba(40, 32, 20, 0.34);
-    --goal-jade: #1a7a52;
-    --goal-teal: #0f7178;
-    --goal-sky: #2766b3;
-    --goal-indigo: #4d55bf;
-    --goal-violet: #7a4fbf;
-    --goal-rose: #b23d67;
-    --goal-amber: #8a6414;
-    --goal-slate: #625d54;
+    --bg: #f3f3f1;
+    --surface-1: #fbfbfa;
+    --surface-2: #ececea;
+    --surface-3: #dedede;
+    --border: #d6d6d9;
+    --border-strong: #b9b9bf;
+    --control-border: #7c7c84;
+    --text: #0d0e10;
+    --text-2: #45454c;
+    --text-3: #5c5c64;
+    --accent: #047857;
+    --accent-strong: #065f46;
+    --accent-soft: #ddf3ea;
+    --on-accent: #f6fbf8;
+    --focus: #1d4ed8;
+    --warning: #b45309;
+    --warning-soft: #fbefd9;
+    --danger: #b91c1c;
+    --danger-soft: #fbe4e4;
+    --on-danger: #fdf7f7;
+    --tile-empty: #ececea;
+    --tile-fill: #cfcfd3;
+    --tile-locked: #a7e3cb;
+    --tile-locked-text: #053b2a;
+    --tile-partial: #f6d58e;
+    --tile-partial-text: #3d2a04;
+    --tile-missed: #f3cfcf;
+    --tile-missed-text: #5f1414;
+    --grid: #e2e2e4;
+    --shadow-lg: 0 18px 48px rgba(13, 14, 16, 0.14), 0 0 0 1px #d6d6d9;
+    --backdrop: rgba(13, 14, 16, 0.4);
+    --goal-jade: #047857;
+    --goal-teal: #0f766e;
+    --goal-sky: #1d4ed8;
+    --goal-indigo: #4338ca;
+    --goal-violet: #6d28d9;
+    --goal-rose: #be123c;
+    --goal-amber: #b45309;
+    --goal-slate: #52525b;
     color-scheme: light;
   }
 }
@@ -861,7 +870,7 @@ main:focus,
 .segmented span {
   display: block;
   padding: 6px 12px;
-  border-radius: 8px;
+  border-radius: 2px;
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
   color: var(--text-2);
@@ -947,7 +956,7 @@ main:focus,
   left: 3px;
   width: 18px;
   height: 18px;
-  border-radius: 50%;
+  border-radius: 2px;
   background: var(--text-2);
   transition: transform var(--dur) var(--ease-out), background var(--dur) var(--ease-out);
 }
@@ -976,7 +985,7 @@ main:focus,
   padding: var(--s-1) var(--s-2);
   background: var(--text);
   color: var(--bg);
-  border-radius: 6px;
+  border-radius: 2px;
   font-size: var(--text-xs);
   font-weight: var(--weight-medium);
 }
@@ -1171,7 +1180,7 @@ main:focus,
 .onboarding-tiles span {
   width: 18px;
   height: 18px;
-  border-radius: 5px;
+  border-radius: 2px;
   box-shadow: inset 0 0 0 1px var(--border-strong);
 }
 
@@ -1269,7 +1278,7 @@ main:focus,
   justify-content: center;
   width: 56px;
   height: 56px;
-  border-radius: 14px;
+  border-radius: 2px;
   overflow: hidden;
   background: var(--tile-empty);
   box-shadow: inset 0 0 0 1.5px var(--border-strong);
@@ -1462,7 +1471,7 @@ main:focus,
   width: 24px;
   height: 24px;
   border: 1.5px solid var(--control-border);
-  border-radius: 7px;
+  border-radius: 2px;
   color: var(--on-accent);
   transition: background var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out);
 }
@@ -1539,7 +1548,7 @@ main:focus,
 .goal-chip.is-dot {
   width: 8px;
   height: 8px;
-  border-radius: 2px;
+  border-radius: 1px;
   background: var(--chip);
 }
 
@@ -1789,7 +1798,7 @@ main:focus,
   flex: 0 0 8px;
   width: 8px;
   height: 8px;
-  border-radius: 2px;
+  border-radius: 1px;
   background: var(--text-3);
   transform: translateY(-2px);
 }
@@ -1911,7 +1920,7 @@ button.cal-cell:hover {
   display: inline-block;
   width: 12px;
   height: 12px;
-  border-radius: 3px;
+  border-radius: 1px;
 }
 
 .swatch.is-locked { background: var(--tile-locked); }
@@ -1969,7 +1978,7 @@ button.cal-cell:hover {
   content: "";
   width: 10px;
   height: 10px;
-  border-radius: 3px;
+  border-radius: 1px;
   background: var(--tile-empty);
   box-shadow: inset 0 0 0 1px var(--border-strong);
 }
@@ -2134,7 +2143,7 @@ button.cal-cell:hover {
   width: min(26px, 100%);
   min-height: 2px;
   background: var(--tile-empty);
-  border-radius: 5px 5px 2px 2px;
+  border-radius: 2px;
 }
 
 .wd-bar.has-data { background: var(--tile-fill); }
@@ -2293,7 +2302,7 @@ button.cal-cell:hover {
   display: block;
   aspect-ratio: 1;
   min-width: 0;
-  border-radius: 3px;
+  border-radius: 1px;
   background: var(--tile-empty);
 }
 
@@ -2365,7 +2374,7 @@ button.cal-cell:hover {
   width: 8px;
   height: 8px;
   flex: 0 0 8px;
-  border-radius: 2px;
+  border-radius: 1px;
   background: var(--text-3);
 }
 
@@ -2653,7 +2662,7 @@ button.cal-cell:hover {
 .color-dot {
   width: 18px;
   height: 18px;
-  border-radius: 5px;
+  border-radius: 2px;
   background: var(--chip, var(--text-3));
 }
 
@@ -2739,16 +2748,610 @@ button.cal-cell:hover {
   }
 }
 
+/* =====================================================================
+ * Tactical layer: telemetry type, sharp cards, matrix, bars
+ * ===================================================================== */
+
+/* Numbers, counts, times and metrics are monospace. */
+.num-display,
+.hero-unit,
+.telemetry-label,
+.hero-telemetry,
+.week-label,
+.week-readout,
+.today-count,
+.page-sub,
+.goal-meta,
+.goal-log,
+.stat-row dt,
+.stat-row dd,
+.delta,
+.cal-cell,
+.cal-dow,
+.cal-legend,
+.caption,
+.wd-value,
+.wd-label,
+.wd-tag,
+.chart-axis,
+.tip-value,
+.tip-label,
+.detail-sub,
+.detail-flex,
+.gh-meta,
+.gh-legend,
+.disclosure-summary,
+.subhead-note,
+.menu-hint,
+.menu-chip,
+.menu-sub,
+.focus-label,
+.early-tiles,
+.num-input,
+.appnav-promise,
+.app-footer,
+.data-table td,
+.toast {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Headers: uppercase, heavy, tracked */
+.page-title {
+  font-weight: var(--weight-semibold);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.page-sub {
+  font-size: var(--text-meta);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+}
+
+.section-title,
+.telemetry-label {
+  font-size: var(--text-meta);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-2);
+}
+
+.telemetry-label {
+  font-family: var(--mono);
+  font-weight: 600;
+  margin-bottom: var(--s-3);
+}
+
+.subhead {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+
+.display-title {
+  text-transform: uppercase;
+  letter-spacing: 0;
+  font-weight: 700;
+}
+
+/* Buttons: sharp, bordered, mono labels */
+.btn {
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 3px;
+}
+
+.btn-ghost {
+  color: var(--text-2);
+}
+
+.btn-secondary {
+  background: transparent;
+  border-color: var(--border-strong);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--control-border);
+}
+
+.link-btn {
+  text-transform: uppercase;
+}
+
+.input {
+  border-radius: 3px;
+  background: var(--bg);
+}
+
+/* ---------------- Hero: telemetry streak ---------------- */
+.num-display {
+  font-weight: 800;
+  letter-spacing: -0.06em;
+  line-height: 0.85;
+  color: var(--text);
+}
+
+.hero-unit {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-2);
+}
+
+.hero-telemetry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-4);
+  margin-top: var(--s-4);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.status-tag {
+  padding: 3px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.status-tag::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 8px;
+  vertical-align: 1px;
+  background: var(--accent);
+}
+
+/* Zero is shown raw: inverted, full contrast. */
+.status-tag.is-zero {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--bg);
+}
+
+.status-tag.is-zero::before {
+  background: var(--bg);
+}
+
+.hero-telemetry .hero-best {
+  margin: 0;
+  font-size: inherit;
+  color: var(--text-3);
+}
+
+.hero-status {
+  font-weight: 600;
+}
+
+/* ---------------- Week matrix: 14px squares ---------------- */
+.week {
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.week-strip {
+  gap: 4px;
+}
+
+.week-strip li,
+.week-today {
+  gap: 5px;
+  width: 22px;
+}
+
+.day-tile,
+.week-strip .day-tile {
+  width: 14px;
+  height: 14px;
+  border-radius: 1px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+.day-tile.is-locked {
+  background: var(--accent);
+  box-shadow: none;
+}
+
+/* Partly met: a diagonal slash inside the outline */
+.day-tile.is-partial {
+  background: linear-gradient(135deg, transparent 42%, var(--warning) 42%, var(--warning) 58%, transparent 58%);
+  box-shadow: inset 0 0 0 1px var(--warning);
+}
+
+.day-tile.is-missed {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--control-border);
+}
+
+.day-tile.is-none,
+.day-tile.is-pending {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.today-tile {
+  width: 14px;
+  height: 14px;
+  border-radius: 1px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--text);
+}
+
+.day-tile-fill {
+  background: var(--warning);
+}
+
+.today-check {
+  display: none;
+}
+
+.hero.is-locked .today-tile {
+  background: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.week-label {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.week-today .week-label {
+  color: var(--text);
+}
+
+.week-readout {
+  align-self: flex-start;
+  margin: 0 0 0 var(--s-3);
+  padding: 2px 8px;
+  border-left: 1px solid var(--border-strong);
+  font-size: var(--text-xs);
+  line-height: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+}
+
+.week-readout .today-count {
+  position: static;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--text);
+  opacity: 1;
+}
+
+.hero.is-locked .week-readout .today-count {
+  color: var(--accent);
+  opacity: 1;
+}
+
+/* ---------------- Focus: terminal target ---------------- */
+.focus-title {
+  margin-bottom: var(--s-2);
+}
+
+.focus-form {
+  gap: var(--s-2);
+  padding: 4px 4px 4px var(--s-3);
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: var(--surface-1);
+}
+
+.focus-form:focus-within {
+  border-color: var(--focus);
+}
+
+.focus-label {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--warning);
+}
+
+.focus-input {
+  min-height: 38px;
+  font-family: var(--mono);
+  font-size: var(--text-sm);
+}
+
+.focus-save {
+  min-height: 34px;
+}
+
+/* ---------------- Goals: modular cards ---------------- */
+.goal-list {
+  display: grid;
+  gap: 6px;
+  border-top: 0;
+}
+
+.goal-list > li {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-1);
+  transition: opacity var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out);
+}
+
+.goal-list > li:hover {
+  border-color: var(--border-strong);
+}
+
+.goal {
+  min-height: 58px;
+  padding: var(--s-3) var(--s-4);
+}
+
+.goal-name {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.goal-list > li:not(.is-done) .goal-name {
+  color: var(--text);
+}
+
+/* In progress / partial: amber rail on the left */
+.goal-list > li.is-partial {
+  border-left: 3px solid var(--warning);
+}
+
+.goal-list > li.is-partial .goal {
+  padding-left: calc(var(--s-4) - 2px);
+}
+
+/* Completed: dimmed, struck through, green check */
+.goal-list > li.is-done {
+  opacity: 0.55;
+}
+
+.goal-list > li.is-done .goal-name {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  color: var(--text-2);
+}
+
+.goal-box {
+  flex-basis: 20px;
+  width: 20px;
+  height: 20px;
+  border-radius: 2px;
+}
+
+.goal-check:checked + .goal-box,
+.goal.has-log[data-color] .goal-check:checked + .goal-box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* The amber rail and bar carry partial progress, so the box stays plain. */
+.goal-check:indeterminate + .goal-box,
+.goal.has-log[data-color] .goal-check:indeterminate + .goal-box {
+  background: linear-gradient(135deg, transparent 42%, var(--warning) 42%, var(--warning) 58%, transparent 58%);
+  border-color: var(--warning);
+}
+
+.goal-meta {
+  font-size: var(--text-xs);
+  letter-spacing: 0.02em;
+  color: var(--text-3);
+}
+
+.goal-workout {
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Segmented progress bar for time and water goals */
+.goal-bar {
+  position: relative;
+  display: block;
+  height: 6px;
+  margin-top: 8px;
+  max-width: 22rem;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.goal-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, transparent 0, transparent calc(10% - 2px), var(--surface-1) calc(10% - 2px), var(--surface-1) 10%);
+}
+
+.goal-bar-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--warning);
+  transition: width var(--dur-slow) var(--ease-out);
+}
+
+.goal-list > li.is-done .goal-bar-fill {
+  background: var(--accent);
+}
+
+/* Tactical triggers */
+.goal-more {
+  right: 6px;
+  border-radius: 3px;
+}
+
+.goal-log {
+  right: 10px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.goal-log:hover,
+.goal-log[aria-expanded="true"] {
+  border-color: var(--warning);
+  color: var(--warning);
+  background: transparent;
+}
+
+.goal.has-log {
+  padding-right: 104px;
+}
+
+.add-goal {
+  margin-left: 0;
+  margin-top: var(--s-3);
+  width: 100%;
+  border: 1px dashed var(--border-strong);
+  justify-content: flex-start;
+  padding-left: var(--s-4);
+}
+
+.goals .empty {
+  padding: var(--s-4);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-1);
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* ---------------- Stats and the rest ---------------- */
+.stat-row dt {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.stat-row dd {
+  font-weight: 700;
+}
+
+.stats-streak .hero-unit {
+  font-size: var(--text-sm);
+}
+
+.cal-cell {
+  border-radius: 2px;
+  font-weight: 600;
+}
+
+.cal-dow,
+.cal-legend,
+.gh-legend,
+.caption,
+.disclosure-summary {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.insight-list li {
+  font-size: var(--text-base);
+}
+
+.day-panel,
+.dialog,
+.menu {
+  border-radius: 4px;
+  border-color: var(--border-strong);
+}
+
+.menu-item {
+  border-radius: 2px;
+}
+
+.menu-item.menu-chip {
+  border-radius: 2px;
+  font-size: var(--text-xs);
+}
+
+.menu-title {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: var(--text-sm);
+}
+
+.segmented {
+  border-radius: 3px;
+  border: 1px solid var(--border);
+}
+
+.segmented span {
+  border-radius: 2px;
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.range span {
+  font-family: var(--mono);
+  text-transform: uppercase;
+}
+
+.switch-track,
+.switch-track::after {
+  border-radius: 2px;
+}
+
+.choice-face {
+  border-radius: 3px;
+}
+
+.appnav [role="tab"] {
+  border-radius: 2px;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: var(--text-xs);
+}
 
 @media (min-width: 768px) {
-  .week-strip .day-tile {
-    width: 26px;
-    height: 26px;
-    border-radius: 7px;
-  }
-
-  .today-tile {
-    width: 60px;
-    height: 60px;
+  .appnav [role="tab"][aria-selected="true"] {
+    background: var(--surface-1);
+    box-shadow: inset 2px 0 0 var(--accent);
   }
 }
+
+.wordmark {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: var(--text-base);
+}
+
+.notice {
+  border-radius: 0 3px 3px 0;
+}
+
+.toast {
+  border-radius: 3px;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+

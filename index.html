@@ -4,13 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="Day by Day turns a tiny daily check-in into a clear weekly plan for becoming more consistent.">
-  <meta name="theme-color" content="#161512">
+  <meta name="theme-color" content="#0d0e10">
   <title>Day by Day</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="preload" href="fonts/instrument-sans-latin-var.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/styles.css?v=18">
-  <script src="js/theme.js?v=18"></script>
+  <link rel="preload" href="fonts/jetbrains-mono-latin-var.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="css/styles.css?v=19">
+  <script src="js/theme.js?v=19"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -87,29 +88,33 @@
 
       <section id="hero" class="hero" aria-labelledby="hero-title" hidden>
         <div class="hero-streak-block">
-          <h2 id="hero-title" class="visually-hidden">Locked-in streak</h2>
+          <h2 id="hero-title" class="telemetry-label">Locked-in streak</h2>
           <p class="hero-streak"><span id="streak-count" class="num-display">0</span> <span id="streak-unit" class="hero-unit">day streak</span></p>
-          <p class="hero-best">Best <span id="best-streak">0 days</span></p>
+          <p class="hero-telemetry">
+            <span id="streak-status" class="status-tag">Status: 0 days active</span>
+            <span class="hero-best">Best <span id="best-streak">0 days</span></span>
+          </p>
         </div>
         <div class="week">
           <ol id="week-strip" class="week-strip" aria-label="Past six days"></ol>
           <div class="week-today">
             <div class="today-tile" id="today-progress" role="progressbar" aria-label="Today’s goals" aria-valuemin="0">
               <span class="day-tile-fill" id="today-progress-bar"></span>
-              <span class="today-count" id="today-count" aria-hidden="true"></span>
               <svg class="today-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.5 12.5 10.5 16.5 17.5 8.5"/></svg>
             </div>
             <span class="week-label" aria-hidden="true">Today</span>
           </div>
+          <p class="week-readout" aria-hidden="true"><span class="week-readout-label">Today</span> <span class="today-count" id="today-count"></span></p>
         </div>
         <p id="hero-status" class="hero-status" aria-live="polite"></p>
       </section>
 
-      <section id="focus-card" class="focus" aria-labelledby="focus-label" hidden>
+      <section id="focus-card" class="focus" aria-labelledby="focus-title" hidden>
+        <h2 id="focus-title" class="section-title focus-title">Focus</h2>
         <form id="focus-form" class="focus-form" novalidate>
-          <label for="focus-input" id="focus-label" class="focus-label">Focus</label>
+          <label for="focus-input" id="focus-label" class="focus-label"><span aria-hidden="true">Target //</span><span class="visually-hidden">Today’s focus</span></label>
           <input id="focus-input" class="focus-input" type="text" maxlength="140" autocomplete="off" placeholder="One intention for today" aria-describedby="focus-status">
-          <button type="submit" class="btn btn-ghost btn-sm">Save</button>
+          <button type="submit" class="btn btn-secondary btn-sm focus-save">Save</button>
         </form>
         <p id="focus-status" class="field-hint" aria-live="polite"></p>
       </section>
@@ -566,14 +571,14 @@
     </form>
   </dialog>
 
-  <script src="js/icons.js?v=18"></script>
-  <script src="js/core.js?v=18"></script>
-  <script src="js/stats.js?v=18"></script>
-  <script src="js/plans.js?v=18"></script>
-  <script src="js/storage.js?v=18"></script>
-  <script src="js/sync.js?v=18"></script>
-  <script src="js/firebase-config.js?v=18"></script>
-  <script src="js/cloud.js?v=18"></script>
-  <script src="js/app.js?v=18"></script>
+  <script src="js/icons.js?v=19"></script>
+  <script src="js/core.js?v=19"></script>
+  <script src="js/stats.js?v=19"></script>
+  <script src="js/plans.js?v=19"></script>
+  <script src="js/storage.js?v=19"></script>
+  <script src="js/sync.js?v=19"></script>
+  <script src="js/firebase-config.js?v=19"></script>
+  <script src="js/cloud.js?v=19"></script>
+  <script src="js/app.js?v=19"></script>
 </body>
 </html>
