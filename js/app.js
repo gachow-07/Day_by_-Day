@@ -442,7 +442,7 @@
       more.setAttribute('aria-expanded', 'false');
       more.setAttribute('aria-controls', 'goal-menu');
       if (timedGoal) {
-        more.appendChild(el('span', 'goal-log-text', '[ + LOG ]'));
+        more.appendChild(el('span', 'goal-log-text', 'Log'));
         more.setAttribute('aria-label', (entry.amount.unit === 'min' ? 'Log time for ' : 'Log water for ') + entry.name);
       } else {
         more.appendChild(icon('ellipsis', 18));
