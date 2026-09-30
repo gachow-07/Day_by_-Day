@@ -3359,3 +3359,201 @@ button.cal-cell:hover {
   letter-spacing: 0.04em;
 }
 
+
+/* ---------------- Study timer ---------------- */
+.goal-actions {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 6px;
+}
+
+.goal-actions .goal-more {
+  position: static;
+  transform: none;
+}
+
+.goal.has-timer {
+  padding-right: 168px;
+}
+
+.goal-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 44px;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.goal-act:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.goal-act-glyph {
+  font-size: 9px;
+  color: var(--accent);
+}
+
+.goal-act.is-stop {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.goal-act.is-stop:hover {
+  background: var(--warning-soft);
+}
+
+.goal-act:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.goal-timer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--warning);
+}
+
+.goal-timer::before,
+.timer-bar-dot {
+  content: "";
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  background: var(--warning);
+  animation: timer-blink 1s steps(2, start) infinite;
+}
+
+.goal-timer.is-paused,
+.timer-bar.is-paused .timer-bar-time {
+  color: var(--text-3);
+}
+
+.goal-timer.is-paused::before,
+.timer-bar.is-paused .timer-bar-dot {
+  animation: none;
+  background: var(--text-3);
+}
+
+.goal-timer.is-break {
+  color: var(--accent);
+}
+
+.goal-timer.is-break::before {
+  background: var(--accent);
+}
+
+@keyframes timer-blink {
+  to { visibility: hidden; }
+}
+
+.goal-list > li:has(.goal-timer) {
+  border-color: var(--warning);
+}
+
+/* A running timer with no row today (not due today, or started yesterday) */
+.timer-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  margin-top: var(--s-5);
+  padding: var(--s-2) var(--s-2) var(--s-2) var(--s-4);
+  border: 1px solid var(--warning);
+  border-radius: 4px;
+  background: var(--surface-1);
+}
+
+.timer-bar-text {
+  flex: 1 1 12rem;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.timer-bar-name {
+  font-weight: 700;
+}
+
+.timer-bar-time {
+  color: var(--warning);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Toast with an UNDO action */
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.toast-action {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  background: transparent;
+  color: inherit;
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.toast-action:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Phones: the timer controls sit under the goal instead of beside it */
+@media (max-width: 479px) {
+  .goal.has-timer {
+    padding-right: var(--s-4);
+  }
+
+  .goal-list > li:has(.goal-actions) {
+    padding-bottom: var(--s-3);
+  }
+
+  .goal-actions {
+    position: static;
+    transform: none;
+    justify-content: flex-end;
+    padding: 0 var(--s-3);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .goal-timer::before,
+  .timer-bar-dot {
+    animation: none !important;
+  }
+}

@@ -10,8 +10,8 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="preload" href="fonts/instrument-sans-latin-var.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="fonts/jetbrains-mono-latin-var.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/styles.css?v=20">
-  <script src="js/theme.js?v=20"></script>
+  <link rel="stylesheet" href="css/styles.css?v=21">
+  <script src="js/theme.js?v=21"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -118,6 +118,13 @@
         </form>
         <p id="focus-status" class="field-hint" aria-live="polite"></p>
       </section>
+
+      <div id="timer-bar" class="timer-bar" role="group" aria-label="Running timer" hidden>
+        <span class="timer-bar-dot" aria-hidden="true"></span>
+        <span class="timer-bar-text"><span id="timer-bar-name" class="timer-bar-name"></span> <span id="timer-bar-time" class="timer-bar-time" role="timer"></span></span>
+        <button type="button" id="timer-bar-pause" class="goal-act" data-act="pause">Pause</button>
+        <button type="button" id="timer-bar-stop" class="goal-act is-stop" data-act="stop">Stop</button>
+      </div>
 
       <section id="goals-card" class="goals section" aria-labelledby="goals-title" hidden>
         <div class="section-head">
@@ -520,7 +527,7 @@
     </form>
   </dialog>
 
-  <div id="toast" class="toast" aria-hidden="true" hidden></div>
+  <div id="toast" class="toast" aria-hidden="true" hidden><span id="toast-text"></span><button type="button" id="toast-action" class="toast-action" hidden></button></div>
 
   <div id="goal-menu" class="menu" role="menu" aria-labelledby="goal-menu-title" hidden>
     <p class="menu-title" id="goal-menu-title"></p>
@@ -529,6 +536,25 @@
     <div class="menu-sep" role="separator"></div>
     <button type="button" class="menu-item" role="menuitem" id="goal-menu-edit" data-action="edit" tabindex="-1"><span class="menu-label">Edit goal</span></button>
   </div>
+
+  <dialog id="timer-dialog" class="dialog" aria-labelledby="timer-title" aria-describedby="timer-msg">
+    <form id="timer-form" novalidate>
+      <h2 id="timer-title" class="dialog-title">Still studying?</h2>
+      <p id="timer-msg" class="dialog-message"></p>
+      <div class="duration-fields" role="group" aria-label="Time to log">
+        <input id="timer-h" class="input input-sm num-input" type="number" min="0" max="24" step="1" inputmode="numeric" value="0">
+        <label for="timer-h" class="label-inline">h</label>
+        <input id="timer-m" class="input input-sm num-input" type="number" min="0" max="59" step="1" inputmode="numeric" value="0">
+        <label for="timer-m" class="label-inline">min to log</label>
+      </div>
+      <p id="timer-error" class="field-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" id="timer-discard" class="btn btn-danger-ghost">Discard</button>
+        <button type="button" id="timer-keep" class="btn btn-secondary">Keep going</button>
+        <button type="submit" id="timer-log" class="btn btn-primary">Stop and log</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="log-dialog" class="dialog" aria-labelledby="log-title" aria-describedby="log-sub">
     <form id="log-form" novalidate>
@@ -571,14 +597,14 @@
     </form>
   </dialog>
 
-  <script src="js/icons.js?v=20"></script>
-  <script src="js/core.js?v=20"></script>
-  <script src="js/stats.js?v=20"></script>
-  <script src="js/plans.js?v=20"></script>
-  <script src="js/storage.js?v=20"></script>
-  <script src="js/sync.js?v=20"></script>
-  <script src="js/firebase-config.js?v=20"></script>
-  <script src="js/cloud.js?v=20"></script>
-  <script src="js/app.js?v=20"></script>
+  <script src="js/icons.js?v=21"></script>
+  <script src="js/core.js?v=21"></script>
+  <script src="js/stats.js?v=21"></script>
+  <script src="js/plans.js?v=21"></script>
+  <script src="js/storage.js?v=21"></script>
+  <script src="js/sync.js?v=21"></script>
+  <script src="js/firebase-config.js?v=21"></script>
+  <script src="js/cloud.js?v=21"></script>
+  <script src="js/app.js?v=21"></script>
 </body>
 </html>

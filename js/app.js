@@ -319,7 +319,7 @@
     } catch (e) {
       // file:// pages may refuse; the tab still works.
     }
-    document.title = (activeTab === 'today' ? 'Today' : activeTab === 'stats' ? 'Stats' : 'Settings') + ' · Day by Day';
+    updateTitle();
     if (activeTab === 'stats') renderStats();
     if (activeTab === 'settings') renderSettings();
     window.scrollTo(0, 0);
@@ -429,11 +429,21 @@
       bar.appendChild(fill);
       text.appendChild(bar);
     }
+    var timeGoal = !!(entry.amount && entry.amount.unit === 'min');
+    var timing = timeGoal && state.timer && state.timer.habitId === entry.id;
+    if (timing) {
+      var live = el('span', 'goal-timer');
+      live.dataset.timerFor = entry.id;
+      live.setAttribute('role', 'timer');
+      live.setAttribute('aria-label', 'Timer for ' + entry.name);
+      text.appendChild(live);
+    }
     label.appendChild(text);
     li.appendChild(label);
     if (habit) {
       var timedGoal = !!entry.amount;
       label.classList.add(timedGoal ? 'has-log' : 'has-more');
+      if (timeGoal) label.classList.add('has-timer');
       var more = el('button', timedGoal ? 'goal-more goal-log' : 'goal-more');
       more.type = 'button';
       more.id = 'goal-more-' + entry.id;
@@ -449,9 +459,35 @@
         more.setAttribute('aria-label', 'More for ' + entry.name);
         more.dataset.tip = entry.workout ? 'Partly done, workouts and more' : 'Partly done and more';
       }
-      li.appendChild(more);
+      if (timeGoal) {
+        // Time goals: START next to LOG; while timing, PAUSE/RESUME and STOP.
+        var actions = el('div', 'goal-actions');
+        if (timing) {
+          var paused = state.timer.pausedAt !== null;
+          actions.appendChild(timerButton(paused ? 'resume' : 'pause', entry.id, paused ? 'Resume' : 'Pause', (paused ? 'Resume' : 'Pause') + ' timer for ' + entry.name));
+          actions.appendChild(timerButton('stop', entry.id, 'Stop', 'Stop timer and log time for ' + entry.name));
+        } else {
+          actions.appendChild(timerButton('start', entry.id, 'Start', 'Start a timer for ' + entry.name));
+          actions.appendChild(more);
+        }
+        li.appendChild(actions);
+      } else {
+        li.appendChild(more);
+      }
     }
     return li;
+  }
+
+  function timerButton(act, id, text, label) {
+    var b = el('button', 'goal-act is-' + act);
+    b.type = 'button';
+    b.id = 'goal-' + act + '-' + id;
+    b.dataset.act = act;
+    b.dataset.actFor = id;
+    b.setAttribute('aria-label', label);
+    if (act === 'start') b.appendChild(el('span', 'goal-act-glyph', '▶'));
+    b.appendChild(el('span', '', text));
+    return b;
   }
 
   /* ---------------- Goal menu: time, partly done, workouts ---------------- */
@@ -572,6 +608,9 @@
       });
       items.appendChild(chips);
       items.appendChild(menuButton('menu-item', 'log-custom', 'Other amount…'));
+      if (unit === 'min' && !(state.timer && state.timer.habitId === id)) {
+        items.appendChild(menuButton('menu-item', 'focus', 'Focus session', '25 min focus · 5 min break'));
+      }
       var list = rec.logs && rec.logs[id];
       if (list && list.length) items.appendChild(menuButton('menu-item', 'undo', 'Undo last', formatAmount(list[list.length - 1], am)));
     } else {
@@ -660,6 +699,7 @@
     closeGoalMenu(true);
     if (action === 'edit') { openGoalForm(id); return; }
     if (action === 'log-custom') { openLogDialog(id); return; }
+    if (action === 'focus') { onTimerAction('focus', id); return; }
     checkForNewDay();
     if (holdForAccount()) return;
     if (action === 'log') { logValue(id, Number(item.dataset.amount)); return; }
@@ -805,12 +845,351 @@
   }
 
   var toastTimer = null;
-  function showToast(message) {
+  var toastRun = null;
+
+  /** A brief message; `action` ({ label, run }) adds a button such as UNDO. */
+  function showToast(message, action) {
     var t = $('toast');
-    t.textContent = message;
+    $('toast-text').textContent = message;
+    var btn = $('toast-action');
+    toastRun = action ? action.run : null;
+    btn.hidden = !action;
+    if (action) btn.textContent = action.label;
+    t.setAttribute('aria-hidden', action ? 'false' : 'true');
     t.hidden = false;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { t.hidden = true; }, 4000);
+    toastTimer = setTimeout(hideToast, action ? 5500 : 4000);
+  }
+
+  function hideToast() {
+    var t = $('toast');
+    if (t.contains(document.activeElement)) {
+      toastTimer = setTimeout(hideToast, 2000);
+      return;
+    }
+    t.hidden = true;
+    toastRun = null;
+  }
+
+  function onToastAction() {
+    var run = toastRun;
+    clearTimeout(toastTimer);
+    $('toast').hidden = true;
+    toastRun = null;
+    if (run) run();
+  }
+
+  /* ---------------- Study timer ---------------- */
+
+  var audioCtx = null;
+  var lastPhase = null;       // focus/break, to notice a block ending
+  var checkSnoozed = null;    // checkAt the "Still studying?" prompt was dismissed at
+
+  /** "00:24:13" */
+  function clock(ms, short) {
+    var total = Math.floor(ms / 1000);
+    var h = Math.floor(total / 3600);
+    var m = Math.floor((total % 3600) / 60);
+    var sec = total % 60;
+    var two = function (n) { return (n < 10 ? '0' : '') + n; };
+    if (short && !h) return two(m) + ':' + two(sec);
+    return (short ? h : two(h)) + ':' + two(m) + ':' + two(sec);
+  }
+
+  /** Countdowns round up, so a fresh 25-minute block reads 25:00. */
+  function countdown(ms) {
+    return Math.ceil(ms / 1000) * 1000;
+  }
+
+  function timerGoalName() {
+    var h = state.timer && core.findHabit(state, state.timer.habitId);
+    return h ? h.name : 'Timer';
+  }
+
+  function updateTitle() {
+    var base = (activeTab === 'today' ? 'Today' : activeTab === 'stats' ? 'Stats' : 'Settings') + ' · Day by Day';
+    if (!state.timer) { document.title = base; return; }
+    var st = core.timerStatus(state.timer, Date.now());
+    var shown = state.timer.mode === 'focus' ? countdown(st.phaseLeftMs) : st.elapsedMs;
+    document.title = (st.paused ? '❚❚ ' : st.phase === 'break' ? '☕ ' : '▶ ') + clock(shown, true) + ' · ' + timerGoalName();
+  }
+
+  function timerLine(st) {
+    var t = state.timer;
+    var parts = [clock(st.elapsedMs)];
+    if (t.mode === 'focus') parts.push((st.phase === 'focus' ? 'Focus ' : 'Break ') + clock(countdown(st.phaseLeftMs), true) + ' left');
+    if (st.paused) parts.push('Paused');
+    if (t.date !== today) parts.push('Logs to ' + formatDate(t.date, 'short'));
+    return parts.join(' · ');
+  }
+
+  /** The live readout, the fallback bar and the tab title (no saving). Returns the status. */
+  function timerDisplay() {
+    var bar = $('timer-bar');
+    if (!state.timer) {
+      if (!bar.hidden) bar.hidden = true;
+      updateTitle();
+      return null;
+    }
+    var t = state.timer;
+    var st = core.timerStatus(t, Date.now());
+    var line = timerLine(st);
+    var node = document.querySelector('[data-timer-for="' + t.habitId + '"]');
+    var paused = st.paused;
+    if (node) {
+      node.textContent = line;
+      node.classList.toggle('is-paused', paused);
+      node.classList.toggle('is-break', st.phase === 'break');
+    }
+    // No row for it today (the goal isn't due, or it started yesterday): a bar instead.
+    bar.hidden = !!node || activeTab !== 'today';
+    if (!bar.hidden) renderTimerBar(line, paused);
+    updateTitle();
+    return st;
+  }
+
+  /** Once a second: the display, finished focus blocks and the 3-hour check. */
+  function timerTick() {
+    var st = timerDisplay();
+    if (!st) { lastPhase = null; return; }
+    var now = Date.now();
+    var t = state.timer;
+    var paused = st.paused;
+
+    if (t.mode === 'focus' && !paused) {
+      var r = core.timerCatchUp(state, now);
+      if (r.blocks > 0 && commit(r.state)) {
+        var name = timerGoalName();
+        var msg = 'Focus block done. Logged ' + formatDuration(r.minutes) + ' to ' + name + '. Take a 5-minute break.';
+        chime();
+        notify('Focus block done', msg);
+        announce(msg);
+        showToast('Logged ' + formatDuration(r.minutes) + ' to ' + name, undoAction(r.habitId, r.date, r.minutes, name));
+      } else if (lastPhase === 'break' && st.phase === 'focus') {
+        chime();
+        notify('Break over', 'Back to ' + timerGoalName() + '.');
+        announce('Break over. Focus block started.');
+      }
+      lastPhase = st.phase;
+    }
+    if (st.needsCheck && checkSnoozed !== t.checkAt && !anyDialogOpen()) openTimerCheck('check');
+  }
+
+  function renderTimerBar(line, paused) {
+    var bar = $('timer-bar');
+    $('timer-bar-name').textContent = timerGoalName();
+    $('timer-bar-time').textContent = line;
+    var pb = $('timer-bar-pause');
+    pb.dataset.act = paused ? 'resume' : 'pause';
+    pb.textContent = paused ? 'Resume' : 'Pause';
+    bar.classList.toggle('is-paused', paused);
+  }
+
+  function anyDialogOpen() {
+    return Array.prototype.some.call(document.querySelectorAll('dialog'), function (d) { return d.open; });
+  }
+
+  function onTimerAction(act, id) {
+    checkForNewDay();
+    if (holdForAccount()) return;
+    var now = Date.now();
+    if (act === 'start' || act === 'focus') { startTiming(id, act === 'focus' ? 'focus' : 'free'); return; }
+    if (act === 'pause' || act === 'resume') {
+      var r = act === 'pause' ? core.pauseTimer(state, now) : core.resumeTimer(state, now);
+      if (r.ok && !r.unchanged && commit(r.state)) {
+        announce(act === 'pause' ? 'Timer paused.' : 'Timer running.');
+        focusTimerControl(act === 'pause' ? 'resume' : 'pause', id);
+      }
+      return;
+    }
+    if (act === 'stop') stopTiming();
+  }
+
+  function focusTimerControl(act, id) {
+    var b = $('goal-' + act + '-' + id) || (!$('timer-bar').hidden && $('timer-bar-pause'));
+    if (b) b.focus();
+  }
+
+  function startTiming(id, mode) {
+    ensureAudio();
+    if (state.timer && state.timer.habitId !== id) {
+      var other = timerGoalName();
+      var st = core.timerStatus(state.timer, Date.now());
+      if (st.needsCheck) { openTimerCheck('stop'); return; }
+      var mins = core.timerMinutes(st.unloggedMs);
+      confirmDialog({
+        title: 'Stop timing ' + other + '?',
+        message: [mins ? 'Only one timer can run at a time. Stop it and log ' + formatDuration(mins) + ' to ' + other + ' first?' : 'Only one timer can run at a time. Stop it first? It has less than a minute, so nothing will be logged.'],
+        confirmLabel: mins ? 'Stop and log' : 'Stop it'
+      }).then(function (ok) {
+        if (!ok) return;
+        if (finishTimer(null)) startTiming(id, mode);
+      });
+      return;
+    }
+    if (state.timer && state.timer.habitId === id) return;
+    var r = core.startTimer(state, id, today, Date.now(), mode);
+    if (!r.ok) { announce(r.message); return; }
+    if (commit(r.state)) {
+      lastPhase = mode === 'focus' ? 'focus' : null;
+      checkSnoozed = null;
+      var name = timerGoalName();
+      announce(mode === 'focus' ? 'Focus session started for ' + name + ': 25 minutes, then a 5-minute break.' : 'Timer started for ' + name + '.');
+      timerTick();
+      focusTimerControl('pause', id);
+    }
+  }
+
+  function stopTiming() {
+    if (!state.timer) return;
+    var st = core.timerStatus(state.timer, Date.now());
+    if (st.needsCheck) { openTimerCheck('stop'); return; }
+    finishTimer(null);
+  }
+
+  /** Stop and log (`minutes` overrides the measured time). Returns true when saved. */
+  function finishTimer(minutes) {
+    var name = timerGoalName();
+    var r = core.stopTimer(state, Date.now(), minutes);
+    if (!r.ok) { announce(r.message); return false; }
+    if (!commit(r.state)) return false;
+    lastPhase = null;
+    if (r.skipped) {
+      announce('Timer stopped. Under a minute, so nothing was logged.');
+      showToast('Under a minute, so nothing was logged');
+    } else {
+      announce('Logged ' + formatDuration(r.minutes) + ' to ' + name + (r.done ? '. ' + name + ' done.' : '.'));
+      showToast('Logged ' + formatDuration(r.minutes) + ' to ' + name, undoAction(r.habitId, r.date, r.minutes, name));
+      if (r.done) {
+        var box = $('goal-' + r.habitId);
+        if (box) {
+          var row = box.parentNode;
+          row.classList.remove('just-done');
+          void row.offsetWidth;
+          row.classList.add('just-done');
+        }
+      }
+    }
+    var more = r.habitId && $('goal-more-' + r.habitId);
+    var start = r.habitId && $('goal-start-' + r.habitId);
+    if (start) start.focus(); else if (more) more.focus();
+    return true;
+  }
+
+  function undoAction(habitId, date, minutes, name) {
+    return {
+      label: 'Undo',
+      run: function () {
+        var u = core.undoLog(state, habitId, date);
+        if (!u.ok) { announce(u.message); return; }
+        if (commit(u.state)) {
+          announce('Removed ' + formatDuration(u.removed) + ' from ' + name + '.');
+          showToast('Removed ' + formatDuration(u.removed) + ' from ' + name);
+        }
+      }
+    };
+  }
+
+  /* "Still studying?" — after 3 hours, and before stopping a long session */
+
+  var timerCheckMode = null;
+
+  function openTimerCheck(mode) {
+    if (!state.timer) return;
+    timerCheckMode = mode;
+    var st = core.timerStatus(state.timer, Date.now());
+    var mins = core.timerMinutes(st.unloggedMs);
+    var name = timerGoalName();
+    $('timer-title').textContent = 'Still studying?';
+    $('timer-msg').textContent = name + ' has been timing for ' + formatDuration(st.countedMinutes) + '. Check the time before it’s logged.';
+    $('timer-h').value = String(Math.floor(mins / 60));
+    $('timer-m').value = String(mins % 60);
+    $('timer-error').hidden = true;
+    $('timer-keep').hidden = false;
+    openDialog('timer-dialog', $('timer-m'));
+  }
+
+  function onTimerLog(event) {
+    event.preventDefault();
+    var mins = readDuration($('timer-h'), $('timer-m'));
+    if (!(mins >= 0) || isNaN(mins)) {
+      $('timer-error').textContent = 'Enter the time to log, like 1 h 30 min.';
+      $('timer-error').hidden = false;
+      $('timer-m').focus();
+      return;
+    }
+    checkForNewDay();
+    if (holdForAccount()) return;
+    timerCheckMode = 'done';
+    closeDialog('timer-dialog');
+    finishTimer(mins);
+  }
+
+  function onTimerKeep() {
+    var r = core.confirmTimer(state, Date.now());
+    timerCheckMode = 'done';
+    closeDialog('timer-dialog');
+    if (r.ok && commit(r.state)) announce('Timer still running. We’ll check again in 3 hours.');
+  }
+
+  function onTimerDiscard() {
+    var name = timerGoalName();
+    timerCheckMode = 'done';
+    closeDialog('timer-dialog');
+    confirmDialog({
+      title: 'Discard this session?',
+      message: ['The timer for ' + name + ' stops and nothing is logged.'],
+      confirmLabel: 'Discard',
+      danger: true
+    }).then(function (ok) {
+      if (!ok) return;
+      var r = core.discardTimer(state);
+      if (commit(r.state)) announce('Timer discarded. Nothing was logged.');
+    });
+  }
+
+  /* Soft chime and notifications for focus blocks */
+
+  function ensureAudio() {
+    try {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!audioCtx && Ctx) audioCtx = new Ctx();
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    } catch (e) {
+      audioCtx = null;
+    }
+  }
+
+  function chime() {
+    if (!audioCtx) return;
+    try {
+      var t0 = audioCtx.currentTime;
+      [[660, 0], [880, 0.18]].forEach(function (n) {
+        var o = audioCtx.createOscillator();
+        var g = audioCtx.createGain();
+        o.type = 'sine';
+        o.frequency.value = n[0];
+        g.gain.setValueAtTime(0.0001, t0 + n[1]);
+        g.gain.exponentialRampToValueAtTime(0.08, t0 + n[1] + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + n[1] + 0.6);
+        o.connect(g);
+        g.connect(audioCtx.destination);
+        o.start(t0 + n[1]);
+        o.stop(t0 + n[1] + 0.65);
+      });
+    } catch (e) {
+      // Sound is a nicety; the toast and announcement still say what happened.
+    }
+  }
+
+  function notify(title, body) {
+    if (!readPref(NOTIFY_KEY, true) || !('Notification' in window) || Notification.permission !== 'granted') return;
+    try {
+      var n = new Notification(title, { body: body, tag: 'day-by-day-timer', icon: 'icon.svg' });
+      n.onclick = function () { window.focus(); selectTab('today'); n.close(); };
+    } catch (e) {
+      // Some browsers only allow notifications from a service worker; the in-app toast covers it.
+    }
   }
 
   function goalMeta(entry, done, rec) {
@@ -860,7 +1239,8 @@
     var s = core.recordSummary(rec);
 
     // Goal lists (rebuilt only when the goals change, so focus is kept)
-    var signature = JSON.stringify(rec ? rec.habits : []) + JSON.stringify(state.habits.map(function (h) { return [h.icon, h.color]; }));
+    var signature = JSON.stringify(rec ? rec.habits : []) + JSON.stringify(state.habits.map(function (h) { return [h.icon, h.color]; })) +
+      JSON.stringify(state.timer ? [state.timer.habitId, state.timer.pausedAt !== null, state.timer.mode] : null);
     if (signature !== renderedGoalSignature) {
       var list = $('goal-list');
       var flexList = $('flex-list');
@@ -1571,6 +1951,8 @@
     var h = core.findHabit(state, editingId);
     if (!h) return;
     var to = h.status === 'paused' ? 'active' : 'paused';
+    // A running timer for this goal is stopped and logged first, so no time is lost.
+    if (to === 'paused' && state.timer && state.timer.habitId === h.id && !finishTimer(null)) return;
     var r = core.setHabitStatus(state, h.id, to, today);
     if (!r.ok) { $('gf-error').textContent = r.message; $('gf-error').hidden = false; return; }
     if (commit(r.state)) {
@@ -1601,6 +1983,7 @@
         };
     confirmDialog(options).then(function (ok) {
       if (!ok) return;
+      if (state.timer && state.timer.habitId === h.id && !finishTimer(null)) return;
       var r = history ? core.setHabitStatus(state, h.id, 'archived', today) : core.deleteHabit(state, h.id, today);
       if (!r.ok) { $('gf-error').textContent = r.message; $('gf-error').hidden = false; return; }
       if (commit(r.state)) {
@@ -2337,6 +2720,7 @@
 
   function render() {
     renderToday();
+    timerDisplay();
     // Don't rebuild the editor under a drag.
     if ($('goals-dialog').open && !drag) renderManage();
     if (activeTab === 'stats') renderStats();
@@ -2756,6 +3140,26 @@
       else openGoalMenu(more);
     });
     $('goal-menu').addEventListener('click', onGoalMenuPick);
+    $('goals-card').addEventListener('click', function (e) {
+      var b = e.target.closest('.goal-act');
+      if (b) onTimerAction(b.dataset.act, b.dataset.actFor);
+    });
+    $('timer-bar').addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-act]');
+      if (b && state.timer) onTimerAction(b.dataset.act, state.timer.habitId);
+    });
+    $('toast-action').addEventListener('click', onToastAction);
+    $('timer-form').addEventListener('submit', onTimerLog);
+    $('timer-keep').addEventListener('click', onTimerKeep);
+    $('timer-discard').addEventListener('click', onTimerDiscard);
+    $('timer-dialog').addEventListener('close', function () {
+      // Closed without an answer (Escape): don't ask again for this checkpoint.
+      if (timerCheckMode !== 'done' && state.timer) checkSnoozed = state.timer.checkAt;
+      timerCheckMode = null;
+      restoreFocus('timer-dialog', $('goal-list'));
+    });
+    setInterval(timerTick, 1000);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) timerTick(); });
     $('goal-menu').addEventListener('keydown', onGoalMenuKey);
     $('log-form').addEventListener('submit', onLogSubmit);
     $('log-cancel').addEventListener('click', function () { closeDialog('log-dialog'); });
