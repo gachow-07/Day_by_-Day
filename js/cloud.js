@@ -20,6 +20,7 @@
   var db = null;
   var currentUser = null;
   var stopListening = null;
+  var stopHevy = null;
 
   function isConfigured() {
     return !!(config && config.apiKey && config.projectId && config.authDomain);
@@ -54,6 +55,7 @@
    * handlers.onUser(user|null)        — { uid, name, email } or null
    * handlers.onRemote(data|null)      — server-confirmed account document
    * handlers.onError(message)
+   * handlers.onHevy(list)            — optional: recent Hevy workouts
    */
   function start(handlers) {
     if (!isConfigured()) return Promise.resolve(false);
@@ -76,6 +78,7 @@
 
       s.auth.onAuthStateChanged(auth, function (user) {
         if (stopListening) { stopListening(); stopListening = null; }
+        if (stopHevy) { stopHevy(); stopHevy = null; }
         currentUser = user;
         handlers.onUser(user ? { uid: user.uid, name: user.displayName || '', email: user.email || '' } : null);
         if (!user) return;
@@ -89,6 +92,23 @@
         }, function (e) {
           handlers.onError(friendlyError(e));
         });
+        // Workouts the Hevy webhook (functions/index.js) saved for this
+        // account. Read-only for the app; only the function writes them.
+        if (handlers.onHevy) {
+          var hq = s.firestore.query(
+            s.firestore.collection(db, 'users', user.uid, 'hevyWorkouts'),
+            s.firestore.orderBy('receivedAt', 'desc'),
+            s.firestore.limit(10)
+          );
+          stopHevy = s.firestore.onSnapshot(hq, function (snap) {
+            if (snap.metadata.hasPendingWrites) return;
+            handlers.onHevy(snap.docs.map(function (d) {
+              return Object.assign({ id: d.id }, d.data());
+            }));
+          }, function () {
+            // No Hevy rules deployed yet, or offline: ignore quietly.
+          });
+        }
       });
       return true;
     });
