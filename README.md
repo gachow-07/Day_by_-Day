@@ -6,7 +6,7 @@ Add the goals you want to stay consistent with. Each day you check them off; whe
 
 Open the app → check off your goals → leave.
 
-- Plain HTML, CSS and JavaScript. No framework, no build step, no runtime dependencies. The Instrument Sans typeface and a subset of [Lucide](https://lucide.dev) icons are bundled (`fonts/`, `js/icons.js`, licences included).
+- Plain HTML, CSS and JavaScript. No framework, no build step, no runtime dependencies. The JetBrains Mono and Instrument Sans typefaces and a subset of [Lucide](https://lucide.dev) icons are bundled (`fonts/`, `js/icons.js`, licences included).
 - Works offline, including opening the app with no connection (a service worker caches it). Data is always saved in your browser's `localStorage` first.
 - Can be installed as an app (web manifest), with a **Check in today** shortcut.
 - Optional **Sign in with Google** saves your progress to your account and syncs it across devices (Firebase; see [Sign-in and sync](#sign-in-and-sync)). Sign-in stays hidden until it is configured.
@@ -216,15 +216,21 @@ To change the format: bump `SCHEMA_VERSION` in `js/core.js`, add a step to `MIGR
 
 ## Design system
 
-The idea is *building consistency one day at a time*, so the one recurring shape is the **day tile**, a small rounded square. It is the mark (three tiles stepping up, the newest one done), the week strip and today's tile on Today, the goal checkboxes, the calendar days, the early-data progress and the Goal history grids. Nothing else is decorative.
+A sharp, tactical console: high discipline, no soft shapes.
 
-- **Layout before containers.** Sections are grouped by type, spacing and hairlines. Only genuinely separate regions get a surface: dialogs and sheets, the workout menu, and the temporary day panel.
-- **Type.** [Instrument Sans](https://github.com/Instrument/instrument-sans) (variable, Latin, bundled). Page titles 32px semibold, section titles 18px, body 16px, labels 14px, metadata 13px. Statistics and calendar numbers use tabular figures, and the streak is set large with tight tracking.
-- **Colour.** Warm neutrals in both themes (no pure black or white). Mint is kept for completion, active navigation and the main action. Past Locked In days use a quieter green, so only today's completion is bright. Partial days are amber and missed days a muted rose.
-- **Icons** only for navigation and real controls, plus a goal's own icon (plain, in its colour).
-- **Copy** is short and plain. Definitions live in tooltips rather than under every number.
+- **Palette.** Pitch-black base (`#0d0e10`), gunmetal surfaces (`#161719`), hairline borders (`#26272b`), near-white text, tactical green (`#10b981`) for completion and amber (`#f59e0b`) for partial progress. A matching light theme is included. Every pair meets WCAG AA (checked with a script).
+- **Shape.** Corners are 3-4px (1-2px on tiles). There are no pills or circles.
+- **Type.** [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) (bundled, OFL) for every number, count, time and metric, and for button and telemetry labels. [Instrument Sans](https://github.com/Instrument/instrument-sans) (bundled, OFL) for names and sentences. Headers are uppercase and tracked.
+- **Streak telemetry.** The locked-in streak is a large mono numeral with a `STATUS: N DAYS ACTIVE` tag. At zero the tag inverts to full-contrast white.
+- **Week matrix.** Seven 14px squares: solid green when Locked In, an amber diagonal slash when partial, and an empty outline when missed. Today fills from the bottom as goals are done, next to a `TODAY 1/4` readout. When the last goal is done, today's square settles (under a second, off with reduced motion).
+- **Goal cards.** Each goal is its own card: a gunmetal surface with a hairline border.
+  - Open goals: plain card.
+  - In progress or partly done: a 3px amber rail on the left.
+  - Done: dimmed and struck through, with a green check.
+  - Time and water goals: a segmented progress bar and a `[ + LOG ]` trigger.
+- **Focus** is a terminal-style `TARGET //` field with a bordered **Save** button.
 
-All styles come from tokens at the top of `css/styles.css`: colours for both themes, an 8px spacing scale, the type scale, 6/8/10/14px radii, and motion durations and easing curves.
+All styles come from tokens at the top of `css/styles.css` (colours for both themes, spacing, type, radii, motion). The tactical component styles are grouped at the end of the file.
 
 ## Accessibility
 
@@ -248,7 +254,7 @@ index.html          Markup: navigation, Today / Stats / Settings, goal editor, g
 icon.svg            App icon (favicon and install icon)
 manifest.webmanifest  Install metadata and the "Check in today" shortcut
 sw.js               Service worker: caches the app for offline use
-fonts/              Instrument Sans (variable, Latin) and its licence (OFL)
+fonts/              JetBrains Mono and Instrument Sans (variable, Latin) and their licences (OFL)
 css/styles.css      All styles; design tokens (light and dark) at the top
 js/icons.js         Bundled Lucide icons (ISC licence) and a tiny helper
 js/plans.js         Free / Pro plan definitions and feature entitlements

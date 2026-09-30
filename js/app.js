@@ -420,6 +420,15 @@
     rest.dataset.metaFor = entry.id;
     meta.appendChild(rest);
     text.appendChild(meta);
+    if (entry.amount) {
+      // A sharp segmented bar for goals logged in pieces (time, water).
+      var bar = el('span', 'goal-bar');
+      bar.setAttribute('aria-hidden', 'true');
+      var fill = el('span', 'goal-bar-fill');
+      fill.dataset.barFor = entry.id;
+      bar.appendChild(fill);
+      text.appendChild(bar);
+    }
     label.appendChild(text);
     li.appendChild(label);
     if (habit) {
@@ -433,8 +442,7 @@
       more.setAttribute('aria-expanded', 'false');
       more.setAttribute('aria-controls', 'goal-menu');
       if (timedGoal) {
-        more.appendChild(icon('plus', 16));
-        more.appendChild(el('span', '', 'Log'));
+        more.appendChild(el('span', 'goal-log-text', '[ + LOG ]'));
         more.setAttribute('aria-label', (entry.amount.unit === 'min' ? 'Log time for ' : 'Log water for ') + entry.name);
       } else {
         more.appendChild(icon('ellipsis', 18));
@@ -842,6 +850,9 @@
     $('streak-count').textContent = String(sum.currentStreak);
     $('streak-unit').textContent = 'day streak';
     $('best-streak').textContent = plural(sum.bestStreak, 'day');
+    var status = $('streak-status');
+    status.textContent = 'Status: ' + plural(sum.currentStreak, 'day') + ' active';
+    status.classList.toggle('is-zero', sum.currentStreak === 0);
 
     var rec = todayRecord();
     var required = rec ? rec.habits.filter(function (h) { return !h.flex; }) : [];
@@ -873,6 +884,11 @@
       if (isPartial) box.nextSibling.style.setProperty('--fill', Math.round(core.entryCredit(rec, entry) * 100) + '%');
       box.parentNode.classList.toggle('is-done', isDone);
       box.parentNode.classList.toggle('is-partial', isPartial);
+      var card = box.closest('li');
+      card.classList.toggle('is-done', isDone);
+      card.classList.toggle('is-partial', isPartial);
+      var barFill = document.querySelector('[data-bar-for="' + id + '"]');
+      if (barFill && entry) barFill.style.width = Math.round(Math.min(1, rec.preview ? 0 : core.entryCredit(rec, entry)) * 100) + '%';
       var meta = document.querySelector('[data-meta-for="' + id + '"]');
       meta.textContent = entry ? goalMeta(entry, isDone, rec.preview ? null : rec) : '';
       meta.hidden = !meta.textContent;
