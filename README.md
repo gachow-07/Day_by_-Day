@@ -72,6 +72,18 @@ Not every day is all or nothing:
 
 Partial progress never makes a day Locked In or continues a streak, but it does count toward completion rates: a partly done goal counts as half, and time and water goals count by the share logged (1 h of 2 h, or 1 L of 2 L, is half). A day with only partial progress shows as **Partial** (yellow) on the calendar rather than missed, and the Goals history grid shows it as a half-filled square.
 
+### Study timer
+
+Goals measured in time (such as "Study 2 h a day") have a **START** button next to **LOG**.
+
+- **While it runs**, the goal shows a live timer (`00:24:13`) with **PAUSE**/**RESUME** and **STOP**, and the tab title shows it too (`▶ 24:13 · Study`).
+- **STOP** logs the time through the same log as manual entries, so progress, streaks and stats update the same way. A toast says "Logged 24 min to Study" with **UNDO** for about five seconds. Time is rounded to the nearest minute, and sessions under a minute aren't logged.
+- **Focus session** (in the goal's LOG menu) runs 25 minutes of focus, then a 5-minute break, repeating. Each finished focus block is logged automatically with a soft chime, and a notification if notifications are allowed. Breaks don't count.
+- **Only one timer at a time.** Starting another asks whether to stop and log the first.
+- **Past midnight**, a session is logged to the day it started. If that goal isn't on today's list, a bar above the goals keeps the timer in view.
+- **After 3 hours**, it asks **Still studying?** before logging any more. You can keep going, stop and log (editing the minutes first), or discard the session. Stopping a session that long asks the same question.
+- **Accuracy.** The timer never counts ticks. It stores its start time, pause time and total paused time, and works out the elapsed time from those. So it stays right in a background tab, while a phone sleeps, and after a reload. The timer is saved with the rest of your data, so it survives a reload and syncs between devices.
+
 ### Workout splits
 
 Turn on **Rotate through workouts** in a goal's form and list the workouts in order, one per line (for example Legs, Chest, Back, Shoulders), then pick today's workout. Each day the goal is due, Today shows that day's workout on the goal, and the split moves on to the next one. Days the goal isn't scheduled are skipped, so leave rest days out of the schedule. For a times-per-week goal the split moves on each time you check it off instead.
@@ -112,6 +124,7 @@ The tests in `tests/` cover:
 - migrating older saved data (schema 3, the old challenge format and the original prototype) with identical stats, and export/import validation
 - schedules (weekdays, selected days, times per week), neutral unscheduled days, flexible goals not affecting Locked In, weekly goal stats, drag reordering, daily focus and week start
 - insights and their data minimums: week-over-week change, strongest and weakest weekday, biggest opportunity
+- the study timer: elapsed time from timestamps with pauses, reloads, rounding and the under-a-minute skip, logging through the normal log (and undo), past midnight to the start day, one timer at a time, focus blocks (25/5) logged once each and caught up after an absence, the 3-hour check with edited minutes, the 24-hour cap, validation, migration and export
 - water goals: logging, units and validation, cups and gallons stored as fl oz, ml/oz conversion, the daily average, and the v6 → 7 migration
 - partly done and time goals: logging in pieces, reaching the goal, undo, ticking and unticking a timed goal, partial credit in completion rates without Locked In or streaks, calendar and grid states, switching a goal to or from timed, validation, the v5 → 6 migration, and export/import
 - workout splits: rotation on due days only and over many weeks, times-per-week splits, swapping a workout (and swapping back), re-anchoring when the schedule changes, validation, the v4 → 5 migration, and workouts in day details and exports
@@ -165,11 +178,11 @@ If you are not signed in, everything lives in this browser only. Clearing site d
 
 ### Saved-data format and migrations
 
-Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaVersion` field. The current version is **7**:
+Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaVersion` field. The current version is **8**:
 
 ```js
 {
-  schemaVersion: 7,
+  schemaVersion: 8,
   habits: [{
     id: 'h1', name: 'Workout', createdOn: '2026-09-01', status: 'active', archivedOn: null,
     icon: 'dumbbell',              // Lucide icon name or null
@@ -196,12 +209,15 @@ Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaV
     // untimed goals marked partly done. Both count toward completion rates, never toward Locked In.
   },
   focus: { '2026-09-01': 'Finish the essay draft' },   // optional daily intention
-  settings: { weekStart: 0 }                           // 0 = Sunday, 1 = Monday
+  settings: { weekStart: 0 },                          // 0 = Sunday, 1 = Monday
+  timer: null   // or the running study timer: { habitId, date (the day it started), startedAt, pausedAt,
+                //   pausedMs (ms), mode: 'free' | 'focus', logged (focus blocks logged), checkAt (minutes) }
 }
 ```
 
 Streaks and all statistics are calculated from `days` (see `js/stats.js`); no counters are stored.
 
+- **Version 7 → 8:** adds `timer: null` (no study timer running). Nothing else changes. The original is first copied to `day-by-day.backup.v7.<timestamp>`.
 - **Version 6 → 7:** time goals become amount goals: `minutes: n` turns into `amount: { unit: 'min', goal: n }` on goals and daily records (and `minutes: null` into `amount: null`), so water can use the same logging. Logs and every statistic are unchanged. The original is first copied to `day-by-day.backup.v6.<timestamp>`.
 - **Version 5 → 6:** goals gain `minutes: null` (no time goal). Records are unchanged; `logs` and `partial` are optional. The original is first copied to `day-by-day.backup.v5.<timestamp>`.
 - **Version 4 → 5:** goals gain `split: null` (no workout split). Nothing else changes. The original is first copied to `day-by-day.backup.v4.<timestamp>`.

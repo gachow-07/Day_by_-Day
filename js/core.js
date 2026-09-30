@@ -24,7 +24,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  var SCHEMA_VERSION = 7;
+  var SCHEMA_VERSION = 8;
   var APP_ID = 'day-by-day';
   var DAY_MS = 24 * 60 * 60 * 1000;
   var MIN_YEAR = 1970;
@@ -156,12 +156,14 @@
    *     today's record follows the current goal list.
    *   focus: { 'YYYY-MM-DD': 'text' }  optional daily intention
    *   settings: { weekStart: 0 | 1 }   Sunday or Monday
+   *   timer: null, or the one running study timer (see "Study timer"):
+   *     { habitId, date, startedAt, pausedAt, pausedMs, mode, logged, checkAt }
    */
 
   var DAILY = { type: 'daily' };
 
   function emptyState() {
-    return { schemaVersion: SCHEMA_VERSION, habits: [], days: {}, focus: {}, settings: { weekStart: 0 } };
+    return { schemaVersion: SCHEMA_VERSION, habits: [], days: {}, focus: {}, settings: { weekStart: 0 }, timer: null };
   }
 
   /** Day of week for a date key (0 = Sunday). */
@@ -835,6 +837,7 @@
     }
     var next = clone(state);
     next.habits = next.habits.filter(function (h) { return h.id !== id; });
+    if (next.timer && next.timer.habitId === id) next.timer = null;
     if (next.days[today]) {
       var rec = next.days[today];
       rec.habits = rec.habits.filter(function (h) { return h.id !== id; });
@@ -842,6 +845,187 @@
       if (!rec.habits.length) delete next.days[today];
     }
     return result(syncTodayRecord(next, today), {});
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Study timer                                                         */
+  /* ------------------------------------------------------------------ */
+
+  /*
+   * One timer at a time, for a goal whose amount is time. It never counts
+   * ticks: everything comes from timestamps (ms since 1970), so it stays
+   * right in background tabs, while a phone sleeps and after a reload.
+   *   habitId    the goal being timed
+   *   date       the day it was started; time is always logged to that day,
+   *              even if the session runs past midnight
+   *   startedAt  when it started
+   *   pausedAt   when it was paused, or null while running
+   *   pausedMs   total time spent paused before pausedAt
+   *   mode       'free' (a plain stopwatch) or 'focus' (25 min focus, 5 min
+   *              break, repeating; each finished focus block is logged)
+   *   logged     focus blocks already logged
+   *   checkAt    minutes of counted time after which to ask "Still
+   *              studying?" before logging any more
+   */
+  var FOCUS_MS = 25 * 60000;
+  var BREAK_MS = 5 * 60000;
+  var TIMER_CHECK_MINUTES = 180;
+  var TIMER_MODES = ['free', 'focus'];
+
+  function timerElapsedMs(t, now) {
+    var end = t.pausedAt !== null ? t.pausedAt : now;
+    return Math.max(0, end - t.startedAt - t.pausedMs);
+  }
+
+  /**
+   * Where a timer stands at `now`: elapsed and counted time (in focus mode,
+   * breaks don't count), the current phase and time left in it, finished
+   * focus blocks, what hasn't been logged yet, and whether it's past the
+   * "Still studying?" check.
+   */
+  function timerStatus(t, now) {
+    var e = timerElapsedMs(t, now);
+    var out = { elapsedMs: e, paused: t.pausedAt !== null, mode: t.mode, blocks: 0, phase: 'run', phaseLeftMs: 0, countedMs: e };
+    if (t.mode === 'focus') {
+      var cycle = FOCUS_MS + BREAK_MS;
+      var cycles = Math.floor(e / cycle);
+      var inCycle = e - cycles * cycle;
+      var focus = inCycle < FOCUS_MS;
+      out.blocks = cycles + (focus ? 0 : 1);
+      out.phase = focus ? 'focus' : 'break';
+      out.phaseLeftMs = focus ? FOCUS_MS - inCycle : cycle - inCycle;
+      out.countedMs = out.blocks * FOCUS_MS + (focus ? inCycle : 0);
+    }
+    out.unloggedMs = Math.max(0, out.countedMs - t.logged * FOCUS_MS);
+    out.countedMinutes = Math.floor(out.countedMs / 60000);
+    out.needsCheck = out.countedMinutes >= t.checkAt;
+    return out;
+  }
+
+  /** Whole minutes to log for `ms`: under a minute is skipped, otherwise rounded. */
+  function timerMinutes(ms) {
+    return ms < 60000 ? 0 : Math.round(ms / 60000);
+  }
+
+  function timedEntry(state, habitId, date) {
+    var rec = state.days[date];
+    var e = rec && rec.habits.filter(function (h) { return h.id === habitId; })[0];
+    return e && e.amount && e.amount.unit === 'min' ? e : null;
+  }
+
+  /** Start timing a time goal that's on today's list. */
+  function startTimer(state, habitId, today, now, mode) {
+    if (state.timer) return failure(state, 'busy', 'Another timer is running. Stop it first.');
+    if (!timedEntry(state, habitId, today)) return failure(state, 'not-timed', 'Only goals measured in time can be timed.');
+    var m = mode || 'free';
+    if (TIMER_MODES.indexOf(m) < 0) return failure(state, 'invalid-mode', 'Unknown timer mode.');
+    if (!Number.isFinite(now)) return failure(state, 'invalid-time', 'Invalid time.');
+    var next = clone(state);
+    next.timer = { habitId: habitId, date: today, startedAt: Math.round(now), pausedAt: null, pausedMs: 0, mode: m, logged: 0, checkAt: TIMER_CHECK_MINUTES };
+    return result(next, {});
+  }
+
+  function pauseTimer(state, now) {
+    if (!state.timer) return failure(state, 'no-timer', 'No timer is running.');
+    if (state.timer.pausedAt !== null) return result(state, { unchanged: true });
+    var next = clone(state);
+    next.timer.pausedAt = Math.max(next.timer.startedAt, Math.round(now));
+    return result(next, {});
+  }
+
+  function resumeTimer(state, now) {
+    if (!state.timer) return failure(state, 'no-timer', 'No timer is running.');
+    if (state.timer.pausedAt === null) return result(state, { unchanged: true });
+    var next = clone(state);
+    var t = next.timer;
+    t.pausedMs += Math.max(0, Math.round(now) - t.pausedAt);
+    t.pausedAt = null;
+    return result(next, {});
+  }
+
+  /** Log `minutes` for the timer's goal on the day it started, capped to what's left of that day. */
+  function logTimerMinutes(state, t, minutes) {
+    var rec = state.days[t.date];
+    var room = UNITS.min.maxDay - loggedAmount(rec, t.habitId);
+    var m = Math.min(minutes, room);
+    if (m < 1) return { state: state, minutes: 0 };
+    var r = logAmount(state, t.habitId, m, t.date);
+    return r.ok ? { state: r.state, minutes: m, done: r.done, lockedIn: r.lockedIn } : { state: state, minutes: 0, error: r.message };
+  }
+
+  /**
+   * Stop the timer and log what hasn't been logged yet (rounded to the
+   * minute; under a minute is skipped). `minutes`, when given, replaces the
+   * measured amount (the "Still studying?" edit). Returns { minutes, date,
+   * habitId, skipped }.
+   */
+  function stopTimer(state, now, minutes) {
+    var t = state.timer;
+    if (!t) return failure(state, 'no-timer', 'No timer is running.');
+    var st = timerStatus(t, now);
+    var m = minutes === undefined || minutes === null ? timerMinutes(st.unloggedMs) : Number(minutes);
+    if (!Number.isInteger(m) || m < 0) return failure(state, 'invalid-minutes', 'Enter a whole number of minutes.');
+    var next = clone(state);
+    next.timer = null;
+    var extra = { habitId: t.habitId, date: t.date, minutes: 0, skipped: true };
+    if (m < 1 || !timedEntry(next, t.habitId, t.date)) return result(next, extra);
+    var logged = logTimerMinutes(next, t, m);
+    extra.minutes = logged.minutes;
+    extra.skipped = logged.minutes < 1;
+    extra.done = logged.done;
+    extra.lockedIn = logged.lockedIn;
+    return result(logged.state, extra);
+  }
+
+  /** Drop the timer without logging anything. */
+  function discardTimer(state) {
+    if (!state.timer) return result(state, { unchanged: true });
+    var next = clone(state);
+    next.timer = null;
+    return result(next, {});
+  }
+
+  /**
+   * Focus mode: log each finished 25-minute block that isn't logged yet,
+   * but never past the "Still studying?" check. Returns { blocks, minutes }.
+   */
+  function timerCatchUp(state, now) {
+    var t = state.timer;
+    if (!t || t.mode !== 'focus') return result(state, { blocks: 0, minutes: 0 });
+    var st = timerStatus(t, now);
+    var allowed = Math.floor(t.checkAt / 25);
+    var fresh = Math.min(st.blocks, allowed) - t.logged;
+    if (fresh < 1) return result(state, { blocks: 0, minutes: 0 });
+    var next = clone(state);
+    next.timer.logged += fresh;
+    var extra = { blocks: fresh, minutes: 0, habitId: t.habitId, date: t.date, phase: st.phase };
+    if (!timedEntry(next, t.habitId, t.date)) return result(next, extra);
+    var logged = logTimerMinutes(next, t, fresh * 25);
+    extra.minutes = logged.minutes;
+    extra.done = logged.done;
+    extra.lockedIn = logged.lockedIn;
+    return result(logged.state, extra);
+  }
+
+  /** "Still studying? Yes": keep going and ask again in another 3 hours. */
+  function confirmTimer(state, now) {
+    if (!state.timer) return failure(state, 'no-timer', 'No timer is running.');
+    var next = clone(state);
+    var st = timerStatus(next.timer, now);
+    next.timer.checkAt = Math.max(next.timer.checkAt, st.countedMinutes) + TIMER_CHECK_MINUTES;
+    return result(next, {});
+  }
+
+  function validTimer(t, s) {
+    if (t === null) return true;
+    if (!isPlainObject(t)) return false;
+    var keys = ['habitId', 'date', 'startedAt', 'pausedAt', 'pausedMs', 'mode', 'logged', 'checkAt'];
+    if (Object.keys(t).length !== keys.length || keys.some(function (k) { return !(k in t); })) return false;
+    if (!Array.isArray(s.habits) || !s.habits.some(function (h) { return h && h.id === t.habitId; })) return false;
+    if (!isValidDateKey(t.date) || TIMER_MODES.indexOf(t.mode) < 0) return false;
+    if (!Number.isInteger(t.startedAt) || t.startedAt < 0) return false;
+    if (t.pausedAt !== null && !(Number.isInteger(t.pausedAt) && t.pausedAt >= t.startedAt)) return false;
+    return isNonNegInt(t.pausedMs) && isNonNegInt(t.logged) && Number.isInteger(t.checkAt) && t.checkAt >= TIMER_CHECK_MINUTES;
   }
 
   /* ------------------------------------------------------------------ */
@@ -970,6 +1154,7 @@
       });
     }
     if (!isPlainObject(s.settings) || (s.settings.weekStart !== 0 && s.settings.weekStart !== 1)) err('settings.weekStart must be 0 or 1.');
+    if (s.timer === undefined || !validTimer(s.timer, s)) err('timer is invalid.');
     return errors;
   }
 
@@ -1082,6 +1267,7 @@
    *       goals) and the day's workout to daily records.
    *   6 — Adds time goals (minutes, null for existing goals), time logs and
    *       "partly done" marks to daily records.
+   *   8 — Adds the study timer (timer: null when none is running).
    *   7 — Generalises time goals into amount goals, so water can be tracked
    *       too: minutes: n becomes amount: { unit: 'min', goal: n } on goals
    *       and daily records. Logs are unchanged (still minutes).
@@ -1272,6 +1458,14 @@
         });
       }
       return next;
+    },
+
+    7: function v7ToV8(old) {
+      if (!isPlainObject(old)) throw new Error('Saved data is not an object.');
+      var next = clone(old);
+      next.schemaVersion = 8;
+      if (next.timer === undefined) next.timer = null;
+      return next;
     }
   };
 
@@ -1307,7 +1501,7 @@
       return { ok: false, error: 'invalid', message: 'The data could not be upgraded: ' + e.message };
     }
     // Keep only the stored fields; exports also carry computed ones.
-    var state = { schemaVersion: data.schemaVersion, habits: data.habits, days: data.days, focus: data.focus, settings: data.settings };
+    var state = { schemaVersion: data.schemaVersion, habits: data.habits, days: data.days, focus: data.focus, settings: data.settings, timer: data.timer };
     var errors = validateState(state);
     if (errors.length) {
       return { ok: false, error: 'invalid', message: 'The data is damaged or incomplete: ' + errors.slice(0, 3).join(' '), errors: errors };
@@ -1356,6 +1550,7 @@
       days: clone(state.days),
       focus: clone(state.focus),
       settings: clone(state.settings),
+      timer: clone(state.timer === undefined ? null : state.timer),
       dailyRecords: dailyRecords
     };
     if (summary) doc.stats = summary;
@@ -1427,6 +1622,18 @@
     workoutOn: workoutOn,
     upcomingWorkouts: upcomingWorkouts,
     swapWorkout: swapWorkout,
+    FOCUS_MS: FOCUS_MS,
+    BREAK_MS: BREAK_MS,
+    TIMER_CHECK_MINUTES: TIMER_CHECK_MINUTES,
+    timerStatus: timerStatus,
+    timerMinutes: timerMinutes,
+    startTimer: startTimer,
+    pauseTimer: pauseTimer,
+    resumeTimer: resumeTimer,
+    stopTimer: stopTimer,
+    discardTimer: discardTimer,
+    timerCatchUp: timerCatchUp,
+    confirmTimer: confirmTimer,
     PARTIAL_CREDIT: PARTIAL_CREDIT,
     MIN_GOAL_MINUTES: MIN_GOAL_MINUTES,
     UNITS: UNITS,
