@@ -90,6 +90,22 @@ Turn on **Rotate through workouts** in a goal's form and list the workouts in or
 
 Did a different workout? Tap the **⋯** button on the right of the goal and pick what you actually did. The two workouts swap places: today becomes the one you did, and the one you were meant to do moves to the day that workout was planned. For example, on leg day with shoulders planned for Wednesday, choosing Shoulders makes today shoulder day and moves legs to Wednesday. Choosing the original workout again swaps them back. The menu shows when each workout is next planned, and **Edit split** opens the goal form. Each day's record keeps the workout done that day, and it appears in the calendar's day details and in exports.
 
+### Hevy workouts (optional)
+
+When you finish a workout in Hevy, your workout goal is ticked automatically and a toast shows it (for example *Hevy: Push Day · 52 min · 12,400 lb. Gym done.*). The goal is today's goal with a workout split, or else one named like Gym, Workout or Lift. If the Hevy workout's title matches a workout in the split, that workout is recorded for today. Each Hevy workout ticks the goal once; untick it and it stays unticked.
+
+**How it works.** Hevy sends a webhook to a Firebase Cloud Function (`functions/index.js`). The function checks a secret header, fetches the workout from Hevy's API, and saves a summary to `users/{uid}/hevyWorkouts/{id}`. The app reads it (`js/cloud.js` → `onCloudHevy` in `js/app.js`). Your Hevy API key stays in Firebase, never in this repo.
+
+**Setup** (needs the Firebase Blaze plan and Hevy Pro):
+
+1. `npm install -g firebase-tools`, then `firebase login`.
+2. `cd functions && npm install && cd ..`
+3. `firebase functions:secrets:set HEVY_API_KEY` (from Hevy → Settings → Developer).
+4. `firebase functions:secrets:set HEVY_WEBHOOK_TOKEN` (any long random string).
+5. `firebase deploy --only functions,firestore:rules`. When asked for `OWNER_UID`, enter your user UID from Firebase console → Authentication → Users.
+6. In Hevy → Settings → Developer → Webhook, paste the `hevyWebhook` URL printed by the deploy, and put the `HEVY_WEBHOOK_TOKEN` value in the Authorization field.
+7. Log a short workout to test. If nothing happens, run `firebase functions:log`.
+
 ### Reminders
 
 Set a reminder time on a goal, and after that time Day by Day shows one reminder a day for goals that aren't done: inside the app, and as a system notification if you allow notifications in **Settings → Notifications**. Browsers only run web apps while they're open (in a tab or installed), so reminders can't arrive once the app is fully closed. Settings says this plainly. Turning off **Show reminders** stops them on that device.
