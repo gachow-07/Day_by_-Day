@@ -22,6 +22,8 @@
   var TABS = ['today', 'stats', 'settings'];
   var NOTIFY_KEY = 'day-by-day.notify';
   var REMINDED_KEY = 'day-by-day.reminded';
+  var HEVY_KEY = 'day-by-day.hevy-applied';
+  var HEVY_GOAL = /\b(gym|workout|work out|lift|lifting|weights|train|training|strength)\b/i;
   var WIDE = window.matchMedia ? window.matchMedia('(min-width: 1024px)') : { matches: false };
   var SIDEBAR = window.matchMedia ? window.matchMedia('(min-width: 768px)') : { matches: false };
 
@@ -2902,6 +2904,7 @@
       refreshDays();
       render();
     }
+    if (pendingHevy) onCloudHevy(pendingHevy);
   }
 
   function renderAccount() {
@@ -3074,12 +3077,65 @@
       waitingForAccount = true;
       setTimeout(stopWaitingForAccount, 6000);
     }
-    cloud.start({ onUser: onCloudUser, onRemote: onCloudRemote, onError: onCloudError }).catch(function () {
+    cloud.start({ onUser: onCloudUser, onRemote: onCloudRemote, onError: onCloudError, onHevy: onCloudHevy }).catch(function () {
       showAccountError('Sign-in could not be loaded. Check your connection; the app still works on this device.');
       stopWaitingForAccount();
     });
   }
 
+
+  /* ---------------- Hevy workouts ---------------- */
+
+  /**
+   * The goal a Hevy workout completes: today's goal with a workout split,
+   * otherwise one whose name sounds like a workout ("Gym", "Lift", …).
+   */
+  function hevyGoal() {
+    var rec = state.days[today];
+    if (!rec) return null;
+    var onToday = rec.habits.map(function (e) { return core.findHabit(state, e.id); })
+      .filter(function (h) { return h && h.status === 'active'; });
+    return onToday.filter(function (h) { return h.split; })[0]
+      || onToday.filter(function (h) { return HEVY_GOAL.test(h.name); })[0]
+      || null;
+  }
+
+  /** Tick the workout goal for each new Hevy workout logged today (once each). */
+  var pendingHevy = null;
+
+  function onCloudHevy(list) {
+    if (readOnly || !list || !list.length) return;
+    // Wait for the account's latest copy first, so this tick isn't lost to it.
+    if (waitingForAccount || !state.days[today]) { pendingHevy = list; return; }
+    pendingHevy = null;
+    var applied = readPref(HEVY_KEY, []);
+    if (!Array.isArray(applied)) applied = [];
+    var fresh = list.filter(function (w) { return w.day === today && applied.indexOf(w.id) < 0; });
+    if (!fresh.length) return;
+    fresh.forEach(function (w) { applied.push(w.id); });
+    writePref(HEVY_KEY, applied.slice(-50));
+
+    var w = fresh[0];
+    var h = hevyGoal();
+    if (!h) return;
+    var next = state;
+    // If the Hevy title matches a workout in the split, record that one.
+    if (h.split && w.title) {
+      var match = h.split.workouts.filter(function (x) { return x.toLowerCase() === String(w.title).toLowerCase(); })[0];
+      if (match) {
+        var sw = core.swapWorkout(next, h.id, match, today);
+        if (sw.ok !== false && sw.state) next = sw.state;
+      }
+    }
+    var r = core.setHabitDone(next, h.id, true, today);
+    if (r.ok === false || !r.state) return;
+    if (!commit(r.state)) return;
+    var bits = [w.title || 'Workout'];
+    if (w.durationMin) bits.push(w.durationMin + ' min');
+    if (w.volumeLb) bits.push(w.volumeLb.toLocaleString() + ' lb');
+    showToast('Hevy: ' + bits.join(' · ') + '. ' + h.name + ' done.');
+    announce(h.name + ' marked done from Hevy.');
+  }
 
   /* ---------------- Start-up ---------------- */
 
