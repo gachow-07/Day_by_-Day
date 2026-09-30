@@ -25,6 +25,13 @@ service cloud.firestore {
 
       allow read, delete: if isOwner();
       allow create, update: if isOwner() && isValidDoc();
+
+      // Workouts saved by the Hevy webhook (functions/index.js). The app can
+      // only read them; the Cloud Function writes with admin access.
+      match /hevyWorkouts/{workoutId} {
+        allow read: if isOwner();
+        allow write: if false;
+      }
     }
   }
 }
