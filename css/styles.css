@@ -1374,52 +1374,6 @@ main:focus,
   }
 }
 
-/* Focus: one line, no box */
-.focus {
-  padding: var(--s-2) 0 0;
-}
-
-.focus-form {
-  display: flex;
-  align-items: center;
-  gap: var(--s-3);
-  border-bottom: 1px solid var(--border-strong);
-  transition: border-color var(--dur-fast) var(--ease-out);
-}
-
-.focus-form:focus-within {
-  border-bottom-color: var(--focus);
-}
-
-.focus-label {
-  flex: 0 0 auto;
-  font-size: var(--text-meta);
-  font-weight: var(--weight-medium);
-  color: var(--text-2);
-}
-
-.focus-input {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 48px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text);
-}
-
-.focus-input::placeholder {
-  color: var(--text-3);
-}
-
-.focus-input:focus-visible {
-  outline: none;
-}
-
-.focus .field-hint:empty {
-  display: none;
-}
-
 /* Goals: a list with hairlines, each checkbox a small day tile */
 .goals {
   margin-top: var(--s-6);
@@ -2785,7 +2739,6 @@ button.cal-cell:hover {
 .menu-hint,
 .menu-chip,
 .menu-sub,
-.focus-label,
 .early-tiles,
 .num-input,
 .appnav-promise,
@@ -3040,41 +2993,6 @@ button.cal-cell:hover {
 .hero.is-locked .week-readout .today-count {
   color: var(--accent);
   opacity: 1;
-}
-
-/* ---------------- Focus: terminal target ---------------- */
-.focus-title {
-  margin-bottom: var(--s-2);
-}
-
-.focus-form {
-  gap: var(--s-2);
-  padding: 4px 4px 4px var(--s-3);
-  border: 1px solid var(--border-strong);
-  border-radius: 3px;
-  background: var(--surface-1);
-}
-
-.focus-form:focus-within {
-  border-color: var(--focus);
-}
-
-.focus-label {
-  font-size: var(--text-xs);
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--warning);
-}
-
-.focus-input {
-  min-height: 38px;
-  font-family: var(--mono);
-  font-size: var(--text-sm);
-}
-
-.focus-save {
-  min-height: 34px;
 }
 
 /* ---------------- Goals: modular cards ---------------- */
@@ -3594,4 +3512,240 @@ button.cal-cell:hover {
 
 .split-kind {
   margin-bottom: var(--s-1);
+}
+
+/* ---------------- Day plan ---------------- */
+.day-plan {
+  margin-top: var(--s-6);
+}
+
+.plan-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-1);
+}
+
+.plan-item + .plan-item {
+  border-top: 1px solid var(--border);
+}
+
+.plan-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(5.5rem, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 48px;
+  padding: var(--s-2) var(--s-4);
+  cursor: pointer;
+}
+
+.plan-check {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.plan-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  color: transparent;
+}
+
+.plan-check:checked + .plan-box {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--surface-1);
+}
+
+.plan-check:focus-visible + .plan-box {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.plan-time {
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.plan-time.is-anytime {
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.plan-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+.plan-item.is-done .plan-title {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+
+.plan-item.is-done .plan-time {
+  color: var(--text-3);
+}
+
+.plan-empty {
+  margin: 0;
+  padding: var(--s-3) var(--s-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+/* Plan dialog */
+.plan-dialog-head {
+  margin: var(--s-4) 0 var(--s-2);
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.plan-edit-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plan-edit-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 44px;
+  padding: 4px 4px 4px var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-1);
+}
+
+.plan-edit-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--s-3);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.plan-edit-row.is-skipped .plan-title,
+.plan-edit-row.is-skipped .plan-time {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+
+.plan-skipped {
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--warning);
+}
+
+.plan-add {
+  display: grid;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+}
+
+.plan-add-main {
+  display: flex;
+  gap: var(--s-2);
+}
+
+.plan-add-main .input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.plan-times {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-2);
+  max-width: 22rem;
+}
+
+.plan-times .input {
+  width: 100%;
+  min-width: 0;
+}
+
+.plan-times-to {
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+
+.plan-skip {
+  white-space: nowrap;
+}
+
+/* Regular schedule rows in the goal form */
+.plan-rows {
+  display: grid;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plan-form-row {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-1);
+}
+
+.plan-row-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.plan-row-head .input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.plan-row-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  max-width: 22rem;
+  margin: 0;
+}
+
+.plan-row-days .choice-face {
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+}
+
+.plan-row-add {
+  justify-self: start;
 }

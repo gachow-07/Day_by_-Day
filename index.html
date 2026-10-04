@@ -10,8 +10,8 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="preload" href="fonts/instrument-sans-latin-var.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="fonts/jetbrains-mono-latin-var.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/styles.css?v=22">
-  <script src="js/theme.js?v=22"></script>
+  <link rel="stylesheet" href="css/styles.css?v=23">
+  <script src="js/theme.js?v=23"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -109,14 +109,13 @@
         <p id="hero-status" class="hero-status" aria-live="polite"></p>
       </section>
 
-      <section id="focus-card" class="focus" aria-labelledby="focus-title" hidden>
-        <h2 id="focus-title" class="section-title focus-title">Focus</h2>
-        <form id="focus-form" class="focus-form" novalidate>
-          <label for="focus-input" id="focus-label" class="focus-label"><span aria-hidden="true">Target //</span><span class="visually-hidden">Today’s focus</span></label>
-          <input id="focus-input" class="focus-input" type="text" maxlength="140" autocomplete="off" placeholder="One intention for today" aria-describedby="focus-status">
-          <button type="submit" class="btn btn-secondary btn-sm focus-save">Save</button>
-        </form>
-        <p id="focus-status" class="field-hint" aria-live="polite"></p>
+      <section id="plan-card" class="day-plan section" aria-labelledby="plan-title" hidden>
+        <div class="section-head">
+          <h2 id="plan-title" class="section-title">Today’s plan</h2>
+          <button type="button" id="plan-edit-today" class="btn btn-ghost btn-sm" aria-haspopup="dialog" aria-label="Edit today’s plan">Edit</button>
+        </div>
+        <ul id="plan-list" class="plan-list"></ul>
+        <p id="plan-empty" class="plan-empty" hidden></p>
       </section>
 
       <div id="timer-bar" class="timer-bar" role="group" aria-label="Running timer" hidden>
@@ -460,7 +459,19 @@
         <p id="gf-schedule-error" class="field-error" hidden></p>
       </fieldset>
 
-      <fieldset class="field">
+      <fieldset class="field" id="gf-planner-field">
+        <legend class="label">Day planner</legend>
+        <label class="checkbox"><input type="checkbox" id="gf-planner" aria-describedby="gf-planner-note"><span>Plan my next day</span></label>
+        <p class="field-hint" id="gf-planner-note"></p>
+        <div id="gf-planner-wrap" class="split-fields" hidden>
+          <p class="label-inline" id="gf-plan-items-label">Regular schedule</p>
+          <ul id="gf-plan-items" class="plan-rows" aria-labelledby="gf-plan-items-label"></ul>
+          <button type="button" id="gf-plan-add" class="btn btn-secondary btn-sm plan-row-add"><span data-icon="plus" data-icon-size="16"></span>Add to schedule</button>
+        </div>
+        <p id="gf-planner-error" class="field-error" hidden></p>
+      </fieldset>
+
+      <fieldset class="field" id="gf-track-field">
         <legend class="label">Track</legend>
         <div class="radio-list" id="gf-track">
           <label class="radio"><input type="radio" name="gf-track" value="check" checked><span>Check it off</span></label>
@@ -487,7 +498,7 @@
         <p id="gf-track-error" class="field-error" hidden></p>
       </fieldset>
 
-      <fieldset class="field">
+      <fieldset class="field" id="gf-split-field">
         <legend class="label">Workout split</legend>
         <label class="checkbox"><input type="checkbox" id="gf-split"><span>Plan workouts</span></label>
         <div id="gf-split-wrap" class="split-fields" hidden>
@@ -587,6 +598,35 @@
     </form>
   </dialog>
 
+  <dialog id="plan-dialog" class="dialog plan-dialog" aria-labelledby="plan-dialog-title" aria-describedby="plan-dialog-date">
+    <h2 id="plan-dialog-title" class="dialog-title">Plan tomorrow</h2>
+    <p id="plan-dialog-date" class="dialog-message"></p>
+    <h3 class="plan-dialog-head" id="plan-regular-title">Regular schedule</h3>
+    <ul id="plan-regular" class="plan-edit-list" aria-labelledby="plan-regular-title"></ul>
+    <p id="plan-regular-empty" class="field-hint" hidden></p>
+    <h3 class="plan-dialog-head" id="plan-extra-title">Also planned</h3>
+    <ul id="plan-extra" class="plan-edit-list" aria-labelledby="plan-extra-title"></ul>
+    <form id="plan-add-form" class="plan-add" novalidate>
+      <div class="plan-add-main">
+        <label for="plan-add-title" class="visually-hidden">What’s planned</label>
+        <input id="plan-add-title" class="input" type="text" maxlength="80" autocomplete="off" placeholder="Add something" aria-describedby="plan-error">
+        <button type="submit" class="btn btn-secondary">Add</button>
+      </div>
+      <div class="plan-times">
+        <label for="plan-add-time" class="visually-hidden">Start time (optional)</label>
+        <input id="plan-add-time" class="input input-sm" type="time">
+        <span class="plan-times-to" aria-hidden="true">to</span>
+        <label for="plan-add-end" class="visually-hidden">End time (optional)</label>
+        <input id="plan-add-end" class="input input-sm" type="time">
+      </div>
+    </form>
+    <p id="plan-error" class="field-error" role="alert" hidden></p>
+    <div class="dialog-actions">
+      <button type="button" id="plan-schedule" class="btn btn-secondary">Edit schedule</button>
+      <button type="button" id="plan-done" class="btn btn-primary">Done planning</button>
+    </div>
+  </dialog>
+
   <dialog id="day-dialog" class="dialog sheet day-sheet" aria-labelledby="day-dialog-title">
     <div class="sheet-head">
       <h2 id="day-dialog-title" class="dialog-title">Day details</h2>
@@ -606,14 +646,14 @@
     </form>
   </dialog>
 
-  <script src="js/icons.js?v=22"></script>
-  <script src="js/core.js?v=22"></script>
-  <script src="js/stats.js?v=22"></script>
-  <script src="js/plans.js?v=22"></script>
-  <script src="js/storage.js?v=22"></script>
-  <script src="js/sync.js?v=22"></script>
-  <script src="js/firebase-config.js?v=22"></script>
-  <script src="js/cloud.js?v=22"></script>
-  <script src="js/app.js?v=22"></script>
+  <script src="js/icons.js?v=23"></script>
+  <script src="js/core.js?v=23"></script>
+  <script src="js/stats.js?v=23"></script>
+  <script src="js/plans.js?v=23"></script>
+  <script src="js/storage.js?v=23"></script>
+  <script src="js/sync.js?v=23"></script>
+  <script src="js/firebase-config.js?v=23"></script>
+  <script src="js/cloud.js?v=23"></script>
+  <script src="js/app.js?v=23"></script>
 </body>
 </html>
