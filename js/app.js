@@ -459,7 +459,14 @@
         more.setAttribute('aria-label', 'More for ' + entry.name);
         more.dataset.tip = entry.workout ? 'Partly done, workouts and more' : 'Partly done and more';
       }
-      if (timeGoal) {
+      if (habit.planner) {
+        // The day planner: PLAN (tomorrow) next to the menu.
+        label.classList.add('has-timer');
+        var planActs = el('div', 'goal-actions');
+        planActs.appendChild(timerButton('plan', entry.id, 'Plan', 'Plan tomorrow'));
+        planActs.appendChild(more);
+        li.appendChild(planActs);
+      } else if (timeGoal) {
         // Time goals: START next to LOG; while timing, PAUSE/RESUME and STOP.
         var actions = el('div', 'goal-actions');
         if (timing) {
@@ -1001,6 +1008,7 @@
     checkForNewDay();
     if (holdForAccount()) return;
     var now = Date.now();
+    if (act === 'plan') { openPlanDialog(core.addDays(today, 1)); return; }
     if (act === 'start' || act === 'focus') { startTiming(id, act === 'focus' ? 'focus' : 'free'); return; }
     if (act === 'pause' || act === 'resume') {
       var r = act === 'pause' ? core.pauseTimer(state, now) : core.resumeTimer(state, now);
@@ -1226,7 +1234,7 @@
     $('onboarding').hidden = hasHabits;
     $('hero').hidden = !hasHabits;
     $('goals-card').hidden = !hasHabits;
-    $('focus-card').hidden = !hasHabits || !plans.can('reflections');
+    renderDayPlan();
     if (!hasHabits) {
       renderedGoalSignature = null;
       wasLockedIn = null;
@@ -1308,11 +1316,190 @@
     $('hero-status').textContent = heroMessage(s, sum);
     if (wasLockedIn === false && s.lockedIn) celebrate();
     wasLockedIn = s.lockedIn;
+  }
 
-    // Focus
-    var focus = state.focus[today] || '';
-    var input = $('focus-input');
-    if (document.activeElement !== input) input.value = focus;
+  /* ---------------- Day plan ---------------- */
+
+  function timeRange(it) {
+    if (!it.time) return '';
+    return formatTime(it.time) + (it.end ? '–' + formatTime(it.end) : '');
+  }
+
+  /** Today's plan near the top: shown once there's a day planner goal. */
+  function renderDayPlan() {
+    var planner = core.plannerHabit(state);
+    $('plan-card').hidden = !planner;
+    if (!planner) return;
+    var items = core.agendaFor(state, today).filter(function (it) { return !it.skipped; });
+    var sig = JSON.stringify(items);
+    var list = $('plan-list');
+    if (list.dataset.sig !== sig) {
+      var focusedId = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.planId : null;
+      list.textContent = '';
+      items.forEach(function (it) {
+        var li = el('li', 'plan-item' + (it.done ? ' is-done' : ''));
+        var label = el('label', 'plan-row');
+        var box = el('input', 'plan-check');
+        box.type = 'checkbox';
+        box.checked = it.done;
+        box.dataset.planId = it.id;
+        label.appendChild(box);
+        var mark = el('span', 'plan-box');
+        mark.setAttribute('aria-hidden', 'true');
+        mark.appendChild(icon('check', 14));
+        label.appendChild(mark);
+        label.appendChild(el('span', 'plan-time' + (it.time ? '' : ' is-anytime'), it.time ? timeRange(it) : 'Anytime'));
+        label.appendChild(el('span', 'plan-title', it.title));
+        li.appendChild(label);
+        list.appendChild(li);
+      });
+      list.dataset.sig = sig;
+      if (focusedId) {
+        var again = list.querySelector('[data-plan-id="' + focusedId + '"]');
+        if (again) again.focus();
+      }
+    }
+    list.hidden = !items.length;
+    var tomorrowCount = core.agendaFor(state, core.addDays(today, 1)).filter(function (it) { return !it.skipped; }).length;
+    $('plan-empty').hidden = !!items.length;
+    $('plan-empty').textContent = 'Nothing planned for today.' +
+      (tomorrowCount ? '' : ' Tap Plan on “' + planner.name + '” to plan tomorrow.');
+  }
+
+  function onPlanTick(event) {
+    var box = event.target.closest('.plan-check');
+    if (!box) return;
+    checkForNewDay();
+    if (holdForAccount()) { renderDayPlan(); return; }
+    var r = core.setAgendaDone(state, today, box.dataset.planId, box.checked, today);
+    if (!r.ok) { announce(r.message); $('plan-list').dataset.sig = ''; renderDayPlan(); return; }
+    commit(r.state);
+  }
+
+  var planDate = null; // the day open in the plan dialog
+
+  function openPlanDialog(date) {
+    checkForNewDay();
+    if (!core.plannerHabit(state)) return;
+    planDate = date;
+    $('plan-error').hidden = true;
+    $('plan-add-title').value = '';
+    $('plan-add-time').value = '';
+    $('plan-add-end').value = '';
+    renderPlanDialog();
+    openDialog('plan-dialog', $('plan-add-title'));
+  }
+
+  function planRow(it, actionText, actionLabel, act) {
+    var li = el('li', 'plan-edit-row' + (it.skipped ? ' is-skipped' : ''));
+    var text = el('span', 'plan-edit-text');
+    text.appendChild(el('span', 'plan-time' + (it.time ? '' : ' is-anytime'), it.time ? timeRange(it) : 'Anytime'));
+    var title = el('span', 'plan-title', it.title);
+    text.appendChild(title);
+    if (it.skipped) text.appendChild(el('span', 'plan-skipped', 'Skipped'));
+    li.appendChild(text);
+    var b = el('button', act === 'remove' ? 'icon-btn plan-remove' : 'btn btn-ghost btn-sm plan-skip');
+    b.type = 'button';
+    b.dataset.planAct = act;
+    b.dataset.planId = it.id;
+    b.setAttribute('aria-label', actionLabel);
+    if (act === 'remove') { b.appendChild(icon('x', 16)); b.dataset.tip = 'Remove'; }
+    else b.textContent = actionText;
+    li.appendChild(b);
+    return li;
+  }
+
+  function renderPlanDialog() {
+    if (!planDate) return;
+    var tomorrow = core.addDays(today, 1);
+    $('plan-dialog-title').textContent = planDate === today ? 'Today’s plan' : planDate === tomorrow ? 'Plan tomorrow' : 'Plan ' + formatDate(planDate, 'dowLong');
+    $('plan-dialog-date').textContent = formatDate(planDate, 'long');
+    $('plan-done').textContent = planDate === tomorrow ? 'Done planning' : 'Done';
+    var items = core.agendaFor(state, planDate);
+    var regular = items.filter(function (it) { return it.regular; });
+    var extra = items.filter(function (it) { return !it.regular; });
+    var reg = $('plan-regular');
+    reg.textContent = '';
+    regular.forEach(function (it) {
+      reg.appendChild(it.skipped
+        ? planRow(it, 'Bring back', 'Bring back ' + it.title, 'unskip')
+        : planRow(it, 'Skip', 'Skip ' + it.title + ' this day', 'skip'));
+    });
+    reg.hidden = !regular.length;
+    var planner = core.plannerHabit(state);
+    $('plan-regular-empty').hidden = !!regular.length;
+    $('plan-regular-empty').textContent = planner && planner.planner.items.length
+      ? 'Nothing from your regular schedule on ' + formatDate(planDate, 'dowLong') + 's.'
+      : 'Add classes, work and other things that repeat with Edit schedule.';
+    var ex = $('plan-extra');
+    ex.textContent = '';
+    extra.forEach(function (it) { ex.appendChild(planRow(it, '', 'Remove ' + it.title, 'remove')); });
+    ex.hidden = !extra.length;
+  }
+
+  function planError(message) {
+    $('plan-error').textContent = message || '';
+    $('plan-error').hidden = !message;
+  }
+
+  function onPlanAdd(event) {
+    event.preventDefault();
+    checkForNewDay();
+    if (holdForAccount()) return;
+    var item = { title: $('plan-add-title').value, time: $('plan-add-time').value || null, end: $('plan-add-end').value || null };
+    var r = core.addAgendaItem(state, planDate, item, today);
+    if (!r.ok) {
+      planError(r.message);
+      (r.error === 'invalid-time' ? $('plan-add-time') : $('plan-add-title')).focus();
+      return;
+    }
+    if (!commit(r.state)) return;
+    planError('');
+    $('plan-add-title').value = '';
+    $('plan-add-time').value = '';
+    $('plan-add-end').value = '';
+    renderPlanDialog();
+    announce('Added ' + core.cleanName(item.title) + '.');
+    $('plan-add-title').focus();
+  }
+
+  function onPlanDialogClick(event) {
+    var b = event.target.closest('[data-plan-act]');
+    if (!b) return;
+    checkForNewDay();
+    if (holdForAccount()) return;
+    var act = b.dataset.planAct;
+    var id = b.dataset.planId;
+    var it = core.agendaFor(state, planDate).filter(function (x) { return x.id === id; })[0];
+    var r = act === 'remove'
+      ? core.removeAgendaItem(state, planDate, id, today)
+      : core.setAgendaSkip(state, planDate, id, act === 'skip', today);
+    if (!r.ok) { planError(r.message); return; }
+    if (!commit(r.state)) return;
+    planError('');
+    renderPlanDialog();
+    if (it) announce(act === 'remove' ? 'Removed ' + it.title + '.' : act === 'skip' ? 'Skipping ' + it.title + ' that day.' : it.title + ' is back on.');
+    var again = $('plan-dialog').querySelector('[data-plan-id="' + id + '"]');
+    (again || $('plan-add-title')).focus();
+  }
+
+  /** Done planning tomorrow checks off the planner goal for today. */
+  function onPlanDone() {
+    checkForNewDay();
+    var planner = core.plannerHabit(state);
+    var date = planDate;
+    closeDialog('plan-dialog');
+    if (!planner || date !== core.addDays(today, 1)) return;
+    var count = core.agendaFor(state, date).filter(function (it) { return !it.skipped; }).length;
+    var entry = todayEntry(planner.id);
+    var rec = todayRecord();
+    if (entry && rec && rec.done.indexOf(planner.id) < 0 && !holdForAccount()) {
+      var r = core.setHabitDone(state, planner.id, true, today);
+      if (r.ok) commit(r.state);
+    }
+    var msg = 'Tomorrow is planned: ' + (count ? plural(count, 'thing') + ' on it.' : 'nothing on it yet.');
+    showToast(msg);
+    announce(msg);
   }
 
   function heroMessage(s, sum) {
@@ -1387,29 +1574,6 @@
     }
   }
 
-  function onFocusSubmit(event) {
-    event.preventDefault();
-    saveFocus();
-  }
-
-  function saveFocus() {
-    var input = $('focus-input');
-    var current = state.focus[today] || '';
-    var value = input.value.replace(/\s+/g, ' ').trim();
-    if (value === current) return;
-    var r = core.setFocus(state, value, today);
-    if (!r.ok) {
-      $('focus-status').textContent = r.message;
-      return;
-    }
-    if (commit(r.state)) {
-      $('focus-status').textContent = value ? 'Saved for today.' : 'Cleared.';
-      setTimeout(function () { $('focus-status').textContent = ''; }, 2500);
-    }
-  }
-
-  /* ---------------- First goal (onboarding) ---------------- */
-
   function onFirstGoal(event) {
     event.preventDefault();
     var input = $('first-goal');
@@ -1479,6 +1643,7 @@
     var parts = [scheduleText(h.schedule)];
     if (h.amount) parts.push(formatAmount(h.amount.goal, h.amount) + (h.amount.unit === 'min' ? ' a day' : ' of water a day'));
     if (h.split) parts.push(core.isWeeklySplit(h.split) ? 'Weekly workout plan' : h.split.workouts.length + '-workout split');
+    if (h.planner) parts.push('Day planner' + (h.planner.items.length ? ', ' + plural(h.planner.items.length, 'regular item') : ''));
     if (h.reminder) parts.push('Reminder at ' + formatTime(h.reminder));
     if (h.status === 'paused') parts.unshift('Paused');
     if (h.status === 'archived') parts = ['Archived ' + formatDate(h.archivedOn, 'short')];
@@ -1755,6 +1920,131 @@
     var track = document.querySelector('input[name="gf-track"]:checked').value;
     $('gf-duration-wrap').hidden = track !== 'time';
     $('gf-water-wrap').hidden = track !== 'water';
+    // The day planner is checked off by planning, so it has no amount or workouts.
+    var other = otherPlanner();
+    var planning = $('gf-planner').checked && !other;
+    $('gf-planner').disabled = !!other;
+    $('gf-planner-note').textContent = other
+      ? '“' + other.name + '” is already your day planner.'
+      : 'Check this goal off by planning tomorrow. Today’s plan shows at the top of Today.';
+    $('gf-planner-wrap').hidden = !planning;
+    $('gf-track-field').hidden = planning;
+    $('gf-split-field').hidden = planning;
+  }
+
+  /** Another active goal is already the day planner. */
+  function otherPlanner() {
+    var p = core.plannerHabit(state);
+    return p && p.id !== editingId ? p : null;
+  }
+
+  function planDayChoices(days) {
+    var box = el('div', 'day-chips plan-row-days');
+    box.setAttribute('role', 'group');
+    box.setAttribute('aria-label', 'Days');
+    var order = weekStart() === 1 ? [1, 2, 3, 4, 5, 6, 0] : [0, 1, 2, 3, 4, 5, 6];
+    order.forEach(function (d) {
+      var l = el('label', 'choice');
+      var input = el('input');
+      input.type = 'checkbox';
+      input.value = String(d);
+      input.checked = days.indexOf(d) >= 0;
+      input.setAttribute('aria-label', formatDate(core.addDays('2026-09-06', d), 'dowLong'));
+      l.appendChild(input);
+      var face = el('span', 'choice-face', dayShort(d).slice(0, 2));
+      face.setAttribute('aria-hidden', 'true');
+      l.appendChild(face);
+      box.appendChild(l);
+    });
+    return box;
+  }
+
+  var planRowSeq = 0;
+  function planFormRow(it) {
+    var n = ++planRowSeq;
+    var li = el('li', 'plan-form-row');
+    if (it.id) li.dataset.id = it.id;
+    var title = el('input', 'input plan-row-title');
+    title.type = 'text';
+    title.maxLength = core.MAX_PLAN_TITLE;
+    title.autocomplete = 'off';
+    title.placeholder = 'Like Calculus or Work';
+    title.value = it.title || '';
+    title.id = 'gf-plan-title-' + n;
+    title.setAttribute('aria-label', 'Name');
+    title.setAttribute('aria-describedby', 'gf-planner-error');
+    var head = el('div', 'plan-row-head');
+    head.appendChild(title);
+    var rm = el('button', 'icon-btn plan-row-remove');
+    rm.type = 'button';
+    rm.setAttribute('aria-label', 'Remove from schedule');
+    rm.dataset.tip = 'Remove';
+    rm.appendChild(icon('x', 16));
+    head.appendChild(rm);
+    li.appendChild(head);
+    var times = el('div', 'plan-times');
+    var start = el('input', 'input input-sm plan-row-start');
+    start.type = 'time';
+    start.value = it.time || '';
+    start.setAttribute('aria-label', 'Start time (optional)');
+    var end = el('input', 'input input-sm plan-row-end');
+    end.type = 'time';
+    end.value = it.end || '';
+    end.setAttribute('aria-label', 'End time (optional)');
+    times.appendChild(start);
+    var to = el('span', 'plan-times-to', 'to');
+    to.setAttribute('aria-hidden', 'true');
+    times.appendChild(to);
+    times.appendChild(end);
+    li.appendChild(times);
+    li.appendChild(planDayChoices(it.days || [1, 2, 3, 4, 5]));
+    return li;
+  }
+
+  function buildPlannerRows(h) {
+    var list = $('gf-plan-items');
+    list.textContent = '';
+    (h && h.planner ? h.planner.items : []).forEach(function (it) { list.appendChild(planFormRow(it)); });
+  }
+
+  function readPlannerRows() {
+    return Array.prototype.map.call($('gf-plan-items').children, function (li) {
+      return {
+        id: li.dataset.id || undefined,
+        title: li.querySelector('.plan-row-title').value,
+        time: li.querySelector('.plan-row-start').value || null,
+        end: li.querySelector('.plan-row-end').value || null,
+        days: Array.prototype.filter.call(li.querySelectorAll('.plan-row-days input'), function (i) { return i.checked; })
+          .map(function (i) { return Number(i.value); })
+      };
+    });
+  }
+
+  /** Turning on the planner for a new goal names it and starts the schedule. */
+  function onPlannerOn() {
+    if (!editingId) {
+      if (!$('gf-name').value.trim()) $('gf-name').value = 'Plan tomorrow';
+      var iconNone = document.querySelector('input[name="gf-icon"][value=""]');
+      if (iconNone && iconNone.checked) document.querySelector('input[name="gf-icon"][value="calendar-check"]').checked = true;
+    }
+    if (!$('gf-plan-items').children.length) $('gf-plan-items').appendChild(planFormRow({}));
+    $('gf-plan-items').querySelector('.plan-row-title').focus();
+  }
+
+  function onPlannerRowsClick(event) {
+    var rm = event.target.closest('.plan-row-remove');
+    if (rm) {
+      var li = rm.closest('li');
+      var next = li.nextElementSibling || li.previousElementSibling;
+      li.remove();
+      (next ? next.querySelector('.plan-row-title') : $('gf-plan-add')).focus();
+      return;
+    }
+    if (event.target.closest('#gf-plan-add')) {
+      var row = planFormRow({});
+      $('gf-plan-items').appendChild(row);
+      row.querySelector('.plan-row-title').focus();
+    }
   }
 
   function splitKind() {
@@ -1894,6 +2184,9 @@
     $('gf-workouts').removeAttribute('aria-invalid');
     $('gf-split-error').hidden = true;
     $('gf-next').dataset.name = '';
+    $('gf-planner').checked = !!(h && h.planner);
+    buildPlannerRows(h);
+    $('gf-planner-error').hidden = true;
     syncScheduleFields();
     syncSplitChoices(h && h.split && !core.isWeeklySplit(h.split) ? core.workoutOn(state, h, today) : '');
 
@@ -1938,14 +2231,16 @@
     }
     var iconInput = document.querySelector('input[name="gf-icon"]:checked');
     var colorInput = document.querySelector('input[name="gf-color"]:checked');
+    var planning = $('gf-planner').checked && !$('gf-planner').disabled;
     return {
       name: $('gf-name').value,
       icon: iconInput && iconInput.value ? iconInput.value : null,
       color: colorInput && colorInput.value ? colorInput.value : null,
       schedule: schedule,
       reminder: $('gf-remind').checked ? ($('gf-time').value || null) : null,
-      split: split,
-      amount: readAmountField()
+      split: planning ? null : split,
+      amount: planning ? null : readAmountField(),
+      planner: planning ? { items: readPlannerRows() } : null
     };
   }
 
@@ -2015,11 +2310,18 @@
     $('gf-track-error').textContent = amountError;
     $('gf-track-error').hidden = !amountError;
     if (amountError) { (v.amount.unit === 'min' ? $('gf-dur-h') : $('gf-water-goal')).focus(); return; }
+    var pl = v.planner ? core.cleanPlanner(v.planner) : {};
+    $('gf-planner-error').textContent = pl.error || '';
+    $('gf-planner-error').hidden = !pl.error;
+    if (pl.error) {
+      ($('gf-plan-items').querySelector('.plan-row-title') || $('gf-plan-add')).focus();
+      return;
+    }
     var existing = editingId && core.findHabit(state, editingId);
     if (existing && !v.split && !existing.split) delete v.split;
     var r = editingId
       ? core.updateHabit(state, editingId, v, today)
-      : core.addHabit(state, v.name, today, { icon: v.icon, color: v.color, schedule: v.schedule, reminder: v.reminder, split: v.split, amount: v.amount });
+      : core.addHabit(state, v.name, today, { icon: v.icon, color: v.color, schedule: v.schedule, reminder: v.reminder, split: v.split, amount: v.amount, planner: v.planner });
     if (!r.ok) {
       $('gf-error').textContent = r.message;
       $('gf-error').hidden = false;
@@ -3187,8 +3489,8 @@
     // Today
     $('goals-card').addEventListener('change', onGoalChange);
     $('first-goal-form').addEventListener('submit', onFirstGoal);
-    $('focus-form').addEventListener('submit', onFocusSubmit);
-    $('focus-input').addEventListener('blur', saveFocus);
+    $('plan-edit-today').addEventListener('click', function () { openPlanDialog(today); });
+    $('plan-list').addEventListener('change', onPlanTick);
     $('edit-goals').addEventListener('click', openManage);
     $('add-goal').addEventListener('click', function () { openGoalForm(null); });
 
@@ -3209,7 +3511,8 @@
     // Goal form
     $('goal-form').addEventListener('submit', onGoalFormSubmit);
     $('goal-form').addEventListener('change', function (e) {
-      if (e.target.name === 'gf-schedule' || e.target.name === 'gf-track' || e.target.name === 'gf-split-kind' || e.target.id === 'gf-remind' || e.target.id === 'gf-split') syncScheduleFields();
+      if (e.target.name === 'gf-schedule' || e.target.name === 'gf-track' || e.target.name === 'gf-split-kind' || e.target.id === 'gf-remind' || e.target.id === 'gf-split' || e.target.id === 'gf-planner') syncScheduleFields();
+      if (e.target.id === 'gf-planner' && e.target.checked) onPlannerOn();
       if (e.target.name === 'gf-track' && e.target.value === 'water' && !editingId) onTrackWater();
       if (e.target.id === 'gf-water-unit') onWaterUnit();
       if (e.target.name === 'gf-schedule' || e.target.name === 'gf-days' || e.target.closest('#gf-days')) syncSplitChoices();
@@ -3217,6 +3520,16 @@
       if (e.target.id === 'gf-split' && e.target.checked) (splitKind() === 'weekly' ? $('gf-week-plan').querySelector('input') : $('gf-workouts')).focus();
     });
     $('gf-workouts').addEventListener('input', function () { syncSplitChoices(); });
+    $('gf-planner-wrap').addEventListener('click', onPlannerRowsClick);
+    $('plan-add-form').addEventListener('submit', onPlanAdd);
+    $('plan-dialog').addEventListener('click', onPlanDialogClick);
+    $('plan-done').addEventListener('click', onPlanDone);
+    $('plan-schedule').addEventListener('click', function () {
+      var p = core.plannerHabit(state);
+      closeDialog('plan-dialog');
+      if (p) openGoalForm(p.id);
+    });
+    $('plan-dialog').addEventListener('close', function () { planDate = null; planError(''); restoreFocus('plan-dialog', $('goal-list')); });
     $('gf-week-plan').addEventListener('input', function () {
       if (!readWeekPlan().some(Boolean)) return;
       $('gf-split-error').hidden = true;

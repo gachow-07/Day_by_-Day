@@ -37,7 +37,7 @@ GitHub Pages lets browsers keep CSS and JavaScript for about 10 minutes. Without
 
 The app has three sections: a left sidebar on screens 768px and wider, and a bottom tab bar on phones (it respects the safe area and never covers content).
 
-- **Today:** your locked-in streak in large type, your best streak, and the past six days as small tiles next to a larger tile for today, which fills as you check goals off. Below: an optional one-line **Focus**, then today's goals. Ticking a goal saves instantly. When the last one is done, today's tile settles into its completed state (a small lift and drop, then a check draws in, all under a second) and the line reads **Locked in**. There's no confetti, and with reduced motion the tile simply changes. Times-per-week goals sit in a **This week** group with their weekly progress.
+- **Today:** your locked-in streak in large type, your best streak, and the past six days as small tiles next to a larger tile for today, which fills as you check goals off. Below: **Today's plan** (once you have a day planner goal), then today's goals. Ticking a goal saves instantly. When the last one is done, today's tile settles into its completed state (a small lift and drop, then a check draws in, all under a second) and the line reads **Locked in**. There's no confetti, and with reduced motion the tile simply changes. Times-per-week goals sit in a **This week** group with their weekly progress.
 - **Stats:** the locked-in streak leads, with best streak, completion rate (and its change on last week), locked-in days and tracked days in one row below (hover a label for its definition). Then this week's insights as short sentences, a full-width month calendar (choosing a day opens its details in a temporary panel beside the calendar on wide screens, or a bottom sheet on phones; Escape or ✕ closes it), daily completion (7 / 30 / 90 days / all time) and by weekday, and **Goals**, a dropdown (closed by default, remembered per device) with each goal's streak, best streak, completion rate and a grid of up to a year of days in the goal's colour. Until there's a week of check-ins, the top shows how many days are left as seven tiles.
 - **Settings:** Appearance (theme, week start), Reminders, Account (when sign-in is set up), Plan, and Your data (export, import, delete everything).
 
@@ -56,7 +56,7 @@ The app has three sections: a left sidebar on screens 768px and wider, and a bot
 
 ### Managing goals
 
-**Edit goals** lists your goals. Drag a handle to reorder (or focus it and use ↑/↓), and use **Edit** to open a goal. The goal form has: name, an optional icon (86 to choose from, grouped into Fitness, Food and health, Rest and mind, Learning and work, Home and money, People and fun, and Other) and colour, a **schedule** (every day, weekdays, selected days, or a number of times per week), an optional **reminder** time, an optional **workout plan** (same workout on the same weekday, or a rotation), and status actions (**Pause**/**Resume**, **Archive** or **Delete**) with a plain explanation of each.
+**Edit goals** lists your goals. Drag a handle to reorder (or focus it and use ↑/↓), and use **Edit** to open a goal. The goal form has: name, an optional icon (86 to choose from, grouped into Fitness, Food and health, Rest and mind, Learning and work, Home and money, People and fun, and Other) and colour, a **schedule** (every day, weekdays, selected days, or a number of times per week), an optional **day planner** with your regular schedule, an optional **reminder** time, an optional **workout plan** (same workout on the same weekday, or a rotation), and status actions (**Pause**/**Resume**, **Archive** or **Delete**) with a plain explanation of each.
 
 - Changes apply **from today**. Every day keeps its own record of which goals were required and what they were called, so renaming, pausing or removing a goal never changes past days or their stats, and a new goal never counts against days before it existed.
 - Removing a goal that has history **archives** it: it leaves today's list but stays in history and Stats, and can be restored. A goal with no history yet (for example a typo added today) is deleted outright.
@@ -95,6 +95,16 @@ With a weekly plan, swaps only last for the week. On Wednesday (Legs), choosing 
 
 With a rotation, did a different workout? Tap the **⋯** button on the right of the goal and pick what you actually did. The two workouts swap places: today becomes the one you did, and the one you were meant to do moves to the day that workout was planned. For example, on leg day with shoulders planned for Wednesday, choosing Shoulders makes today shoulder day and moves legs to Wednesday. Choosing the original workout again swaps them back. The menu shows when each workout is next planned, and **Edit goal** opens the goal form. Each day's record keeps the workout done that day, and it appears in the calendar's day details and in exports.
 
+### Day planner
+
+Make a goal your day planner by turning on **Plan my next day** in its form (a new goal is named "Plan tomorrow"; it's every day by default, like any goal). Under **Regular schedule**, add the things that repeat: a name, an optional start and end time, and the days, for example Calculus 9:00–10:15 on Mon, Wed and Fri, or Work on Saturdays. Each day's plan includes them automatically.
+
+- **Planning tomorrow:** tap **Plan** on the goal. You see tomorrow's regular items (tap **Skip** if one isn't happening, just for that day) and can add one-off things, with or without a time. **Done planning** checks the goal off for today.
+- **Today's plan** sits near the top of Today, sorted by time with untimed items last. Tick items off as you go. **Edit** changes today's plan the same way.
+- One goal is the day planner at a time. A planner goal is checked off by planning, so it doesn't track time, water or workouts.
+
+The old **Focus** line has been removed. Focus text saved on earlier days is kept and still shows in day details and exports.
+
 ### Reminders
 
 Set a reminder time on a goal, and after that time Day by Day shows one reminder a day for goals that aren't done: inside the app, and as a system notification if you allow notifications in **Settings → Notifications**. Browsers only run web apps while they're open (in a tab or installed), so reminders can't arrive once the app is fully closed. Settings says this plainly. Turning off **Show reminders** stops them on that device.
@@ -127,12 +137,13 @@ The tests in `tests/` cover:
 - month and year boundaries, daylight saving changes, and leap years (including skipping Feb 29)
 - malformed saved data (bad JSON, wrong types, impossible dates, broken invariants, blocked storage)
 - migrating older saved data (schema 3, the old challenge format and the original prototype) with identical stats, and export/import validation
-- schedules (weekdays, selected days, times per week), neutral unscheduled days, flexible goals not affecting Locked In, weekly goal stats, drag reordering, daily focus and week start
+- schedules (weekdays, selected days, times per week), neutral unscheduled days, flexible goals not affecting Locked In, weekly goal stats, drag reordering, daily focus (stored) and week start
 - insights and their data minimums: week-over-week change, strongest and weakest weekday, biggest opportunity
 - the study timer: elapsed time from timestamps with pauses, reloads, rounding and the under-a-minute skip, logging through the normal log (and undo), past midnight to the start day, one timer at a time, focus blocks (25/5) logged once each and caught up after an absence, the 3-hour check with edited minutes, the 24-hour cap, validation, migration and export
 - water goals: logging, units and validation, cups and gallons stored as fl oz, ml/oz conversion, the daily average, and the v6 → 7 migration
 - partly done and time goals: logging in pieces, reaching the goal, undo, ticking and unticking a timed goal, partial credit in completion rates without Locked In or streaks, calendar and grid states, switching a goal to or from timed, validation, the v5 → 6 migration, and export/import
 - workout splits: rotation on due days only and over many weeks, times-per-week splits, swapping a workout (and swapping back), re-anchoring when the schedule changes, validation, the v4 → 5 migration, weekly plans (schedule from the plan, swaps that last one week, workouts not planned later that week, swapping back, a Monday week start, validation, import and the v8 → 9 migration), and workouts in day details and exports
+- the day planner: regular schedule ids and validation, each day's plan by weekday and time, planning only today or up to 14 days ahead, skipping a regular item for one day, removing items, ticking off today's plan, planner goals not tracking amounts or workouts, paused planners, damaged data, the v9 → 10 migration, and export/import
 - plan entitlements (Early access grants everything; Free and Pro limits)
 - theme preference handling (fallback to Auto, blocked storage)
 - sync decisions: first-sign-in upload, fresh-device download, live changes, conflicts, stale devices, unreadable account data
@@ -183,7 +194,7 @@ If you are not signed in, everything lives in this browser only. Clearing site d
 
 ### Saved-data format and migrations
 
-Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaVersion` field. The current version is **9**:
+Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaVersion` field. The current version is **10**:
 
 ```js
 {
@@ -208,6 +219,10 @@ Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaV
                                    // (time, 5-1440), 'ml' (water, 100-10000) or 'oz' (water in
                                    // whole fl oz, 4-384). display ('cup' or 'gal') is how an oz
                                    // goal is shown and typed (1 cup = 8 fl oz, 1 gal = 128 fl oz).
+    planner: { items: [{ id: 'r1', title: 'Calculus', time: '09:00', end: '10:15', days: [1, 3, 5] }] }
+                                   // or null: the day planner goal and its regular schedule. time and
+                                   // end are 'HH:MM' or null; days are weekdays (0 = Sunday). Only the
+                                   // first active planner goal is used.
   }],
   days: {
     '2026-09-01': { habits: [{ id: 'h1', name: 'Workout', workout: 'Legs' }, { id: 'h2', name: 'Run', flex: true, target: 3 },
@@ -218,7 +233,10 @@ Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaV
     // logs are an amount goal's entries in its unit (it's done when they reach the goal); partial lists
     // untimed goals marked partly done. Both count toward completion rates, never toward Locked In.
   },
-  focus: { '2026-09-01': 'Finish the essay draft' },   // optional daily intention
+  agenda: { '2026-09-02': { items: [{ id: 'p1', title: 'Dentist', time: '08:30', end: null }],
+                           skip: ['r1'], done: ['p1'] } },
+                    // the plan for each day: one-off items, regular items skipped that day, and items ticked off
+  focus: { '2026-09-01': 'Finish the essay draft' },   // daily intention from older versions (no longer edited)
   settings: { weekStart: 0 },                          // 0 = Sunday, 1 = Monday
   timer: null   // or the running study timer: { habitId, date (the day it started), startedAt, pausedAt,
                 //   pausedMs (ms), mode: 'free' | 'focus', logged (focus blocks logged), checkAt (minutes) }
@@ -227,6 +245,7 @@ Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaV
 
 Streaks and all statistics are calculated from `days` (see `js/stats.js`); no counters are stored.
 
+- **Version 9 → 10:** adds the day planner: goals gain `planner: null`, and an empty `agenda` is added. Nothing else changes. The original is first copied to `day-by-day.backup.v9.<timestamp>`.
 - **Version 8 → 9:** adds weekly workout plans (`split.type: 'weekly'`). Existing data is unchanged; only the version number changes. The original is first copied to `day-by-day.backup.v8.<timestamp>`.
 - **Version 7 → 8:** adds `timer: null` (no study timer running). Nothing else changes. The original is first copied to `day-by-day.backup.v7.<timestamp>`.
 - **Version 6 → 7:** time goals become amount goals: `minutes: n` turns into `amount: { unit: 'min', goal: n }` on goals and daily records (and `minutes: null` into `amount: null`), so water can use the same logging. Logs and every statistic are unchanged. The original is first copied to `day-by-day.backup.v6.<timestamp>`.

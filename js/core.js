@@ -24,7 +24,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  var SCHEMA_VERSION = 9;
+  var SCHEMA_VERSION = 10;
   var APP_ID = 'day-by-day';
   var DAY_MS = 24 * 60 * 60 * 1000;
   var MIN_YEAR = 1970;
@@ -38,6 +38,10 @@
   var GOAL_COLORS = ['jade', 'teal', 'sky', 'indigo', 'violet', 'rose', 'amber', 'slate'];
   var MAX_FOCUS_LENGTH = 140;
   var MAX_WORKOUTS = 14;
+  var MAX_PLAN_ITEMS = 30;       // regular schedule items on the day planner goal
+  var MAX_DAY_ITEMS = 30;        // one-off plan items per day
+  var MAX_PLAN_TITLE = 80;
+  var MAX_PLAN_AHEAD = 14;       // days ahead a plan can be made
   var MAX_WORKOUT_LENGTH = 40;
   var MIN_GOAL_MINUTES = 5;
   /* Amount goals: time in minutes, or water in millilitres or US fluid ounces. */
@@ -124,7 +128,7 @@
 
   /*
    * State (schema 6)
-   *   habits: [{ id, name, createdOn, status, archivedOn, icon, color, schedule, reminder, split, amount }]
+   *   habits: [{ id, name, createdOn, status, archivedOn, icon, color, schedule, reminder, split, amount, planner }]
    *     status is 'active', 'paused' or 'archived'; array order is display order.
    *     icon: a Lucide icon name or null; color: one of GOAL_COLORS or null.
    *     schedule: { type: 'daily' } | { type: 'weekdays' }
@@ -159,7 +163,16 @@
    *     by the share of time logged, a partly done goal as half).
    *     Past records are never rewritten when goals change later. Only
    *     today's record follows the current goal list.
-   *   focus: { 'YYYY-MM-DD': 'text' }  optional daily intention
+   *     planner: null, or { items: [{ id: 'r1', title, time, end, days }] }:
+   *       a "plan tomorrow" goal and its regular schedule (classes, work),
+   *       each item on the weekdays in `days` (Sunday = 0). time and end are
+   *       'HH:MM' or null. The first active planner goal drives the plan.
+   *   agenda: { 'YYYY-MM-DD': { items?: [{ id: 'p1', title, time, end }],
+   *                              skip?: [regular item ids], done?: [item ids] } }
+   *     The plan for each day: one-off items, regular items skipped that
+   *     day, and items ticked off.
+   *   focus: { 'YYYY-MM-DD': 'text' }  daily intention (no longer edited;
+   *     kept so older days still show it)
    *   settings: { weekStart: 0 | 1 }   Sunday or Monday
    *   timer: null, or the one running study timer (see "Study timer"):
    *     { habitId, date, startedAt, pausedAt, pausedMs, mode, logged, checkAt }
@@ -168,7 +181,7 @@
   var DAILY = { type: 'daily' };
 
   function emptyState() {
-    return { schemaVersion: SCHEMA_VERSION, habits: [], days: {}, focus: {}, settings: { weekStart: 0 }, timer: null };
+    return { schemaVersion: SCHEMA_VERSION, habits: [], days: {}, focus: {}, agenda: {}, settings: { weekStart: 0 }, timer: null };
   }
 
   /** Day of week for a date key (0 = Sunday). */
@@ -365,6 +378,223 @@
   }
 
   /** Validate an amount goal: null or { unit, goal }. Returns { amount } or { error }. */
+  /* ---------------- Day planner ---------------- */
+
+  function cleanPlanTitle(value) {
+    return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+  }
+
+  function cleanPlanTimes(item) {
+    var time = item.time || null;
+    var end = item.end || null;
+    if (time !== null && !TIME_RE.test(time)) return { error: 'Enter times like 09:30.' };
+    if (end !== null && !TIME_RE.test(end)) return { error: 'Enter times like 09:30.' };
+    if (end && !time) return { error: 'Add a start time, or clear the end time.' };
+    if (end && end <= time) return { error: 'The end time must be after the start time.' };
+    return { time: time, end: end };
+  }
+
+  function nextItemId(items, prefix) {
+    var max = 0;
+    items.forEach(function (it) {
+      var n = Number(String(it.id || '').slice(1));
+      if (String(it.id || '').charAt(0) === prefix && Number.isInteger(n) && n > max) max = n;
+    });
+    return prefix + (max + 1);
+  }
+
+  /**
+   * Normalise and validate a day planner from the goal form, or null:
+   * { items: [{ id?, title, time, end, days }] }. Blank rows are dropped and
+   * new items get ids. Returns { planner } or { error }.
+   */
+  function cleanPlanner(input) {
+    if (input === null) return { planner: null };
+    if (!isPlainObject(input) || !Array.isArray(input.items)) return { error: 'That schedule can’t be saved.' };
+    var items = [];
+    for (var i = 0; i < input.items.length; i++) {
+      var it = input.items[i] || {};
+      var title = cleanPlanTitle(it.title);
+      if (!title && !it.time && !it.end) continue;
+      if (!title) return { error: 'Give each item in your schedule a name.' };
+      if (title.length > MAX_PLAN_TITLE) return { error: 'Keep names to ' + MAX_PLAN_TITLE + ' characters or fewer.' };
+      var t = cleanPlanTimes(it);
+      if (t.error) return { error: t.error };
+      var days = Array.isArray(it.days) ? it.days.filter(function (d, j, a) {
+        return Number.isInteger(d) && d >= 0 && d <= 6 && a.indexOf(d) === j;
+      }).sort() : [];
+      if (!days.length) return { error: 'Choose the days for “' + title + '”.' };
+      var id = typeof it.id === 'string' && /^r\d{1,4}$/.test(it.id) && !items.some(function (x) { return x.id === it.id; }) ? it.id : null;
+      items.push({ id: id, title: title, time: t.time, end: t.end, days: days });
+    }
+    if (items.length > MAX_PLAN_ITEMS) return { error: 'Your schedule can have up to ' + MAX_PLAN_ITEMS + ' items.' };
+    items.forEach(function (it) { if (!it.id) it.id = nextItemId(items, 'r'); });
+    return { planner: { items: items } };
+  }
+
+  function validPlanItem(it, idRe) {
+    if (!isPlainObject(it) || typeof it.id !== 'string' || !idRe.test(it.id)) return false;
+    var title = cleanPlanTitle(it.title);
+    if (!title || title !== it.title || title.length > MAX_PLAN_TITLE) return false;
+    if (it.time !== null && !(typeof it.time === 'string' && TIME_RE.test(it.time))) return false;
+    if (it.end !== null && !(typeof it.end === 'string' && TIME_RE.test(it.end))) return false;
+    return !(it.end && (!it.time || it.end <= it.time));
+  }
+
+  function uniqueIds(list) {
+    return list.every(function (x, i) { return list.indexOf(x) === i; });
+  }
+
+  function validPlanner(p) {
+    if (p === null) return true;
+    if (!isPlainObject(p) || Object.keys(p).length !== 1 || !Array.isArray(p.items) || p.items.length > MAX_PLAN_ITEMS) return false;
+    return uniqueIds(p.items.map(function (it) { return it && it.id; })) && p.items.every(function (it) {
+      if (!validPlanItem(it, /^r\d{1,4}$/) || Object.keys(it).length !== 5) return false;
+      var c = cleanSchedule({ type: 'days', days: it.days });
+      return Array.isArray(it.days) && it.days.length && !c.error && JSON.stringify(it.days) === JSON.stringify(it.days.slice().sort()) &&
+        uniqueIds(it.days) && it.days.every(function (d) { return Number.isInteger(d) && d >= 0 && d <= 6; });
+    });
+  }
+
+  function validAgendaEntry(e) {
+    if (!isPlainObject(e)) return false;
+    if (Object.keys(e).some(function (k) { return ['items', 'skip', 'done'].indexOf(k) < 0; })) return false;
+    var items = e.items === undefined ? [] : e.items;
+    if (!Array.isArray(items) || items.length > MAX_DAY_ITEMS) return false;
+    if (!items.every(function (it) { return validPlanItem(it, /^p\d{1,4}$/) && Object.keys(it).length === 4; })) return false;
+    var ids = items.map(function (it) { return it.id; });
+    if (!uniqueIds(ids)) return false;
+    var skip = e.skip === undefined ? [] : e.skip;
+    var done = e.done === undefined ? [] : e.done;
+    if (!Array.isArray(skip) || skip.length > MAX_PLAN_ITEMS || !uniqueIds(skip) || skip.some(function (id) { return typeof id !== 'string' || !/^r\d{1,4}$/.test(id); })) return false;
+    if (!Array.isArray(done) || done.length > MAX_PLAN_ITEMS + MAX_DAY_ITEMS || !uniqueIds(done)) return false;
+    return done.every(function (id) {
+      return typeof id === 'string' && (/^r\d{1,4}$/.test(id) || ids.indexOf(id) >= 0);
+    });
+  }
+
+  /** The active goal whose planner makes the day plan (the first one), or null. */
+  function plannerHabit(state) {
+    return activeHabits(state).filter(function (h) { return h.planner; })[0] || null;
+  }
+
+  function byTime(a, b) {
+    if (a.time && b.time) return a.time < b.time ? -1 : a.time > b.time ? 1 : 0;
+    if (a.time) return -1;
+    if (b.time) return 1;
+    return 0;
+  }
+
+  /**
+   * The plan for `date`: regular items on that weekday (from the planner
+   * goal) and that day's one-off items, by time (untimed last). Each is
+   * { id, title, time, end, regular, skipped, done }.
+   */
+  function agendaFor(state, date) {
+    var e = (state.agenda && state.agenda[date]) || {};
+    var skip = e.skip || [];
+    var done = e.done || [];
+    var out = [];
+    var h = plannerHabit(state);
+    var dow = dayOfWeek(date);
+    if (h) {
+      h.planner.items.forEach(function (it) {
+        if (it.days.indexOf(dow) < 0) return;
+        out.push({ id: it.id, title: it.title, time: it.time, end: it.end, regular: true, skipped: skip.indexOf(it.id) >= 0, done: done.indexOf(it.id) >= 0 });
+      });
+    }
+    (e.items || []).forEach(function (it) {
+      out.push({ id: it.id, title: it.title, time: it.time, end: it.end, regular: false, skipped: false, done: done.indexOf(it.id) >= 0 });
+    });
+    // Stable sort by time
+    return out.map(function (it, i) { return [it, i]; }).sort(function (a, b) {
+      return byTime(a[0], b[0]) || a[1] - b[1];
+    }).map(function (x) { return x[0]; });
+  }
+
+  function agendaDateError(state, date, today) {
+    if (!isValidDateKey(date)) return failure(state, 'invalid-date', 'Invalid date.');
+    if (date < today) return failure(state, 'past', 'Past days can’t be planned.');
+    if (daysBetween(today, date) > MAX_PLAN_AHEAD) return failure(state, 'too-far', 'You can plan up to ' + MAX_PLAN_AHEAD + ' days ahead.');
+    return null;
+  }
+
+  /** Change the agenda entry for `date` with `fn(entry)`, dropping empty parts. */
+  function editAgenda(state, date, fn) {
+    var next = clone(state);
+    if (!isPlainObject(next.agenda)) next.agenda = {};
+    var e = next.agenda[date] || {};
+    e.items = e.items || [];
+    e.skip = e.skip || [];
+    e.done = e.done || [];
+    var res = fn(e);
+    if (res && res.error) return failure(state, res.error, res.message);
+    var ids = e.items.map(function (it) { return it.id; });
+    e.done = e.done.filter(function (id) { return id.charAt(0) === 'r' || ids.indexOf(id) >= 0; });
+    ['items', 'skip', 'done'].forEach(function (k) { if (!e[k].length) delete e[k]; });
+    if (Object.keys(e).length) next.agenda[date] = e;
+    else delete next.agenda[date];
+    return result(next, res || {});
+  }
+
+  /** Add a one-off item { title, time, end } to the plan for `date` (today or later). */
+  function addAgendaItem(state, date, item, today) {
+    var bad = agendaDateError(state, date, today);
+    if (bad) return bad;
+    var title = cleanPlanTitle(item && item.title);
+    if (!title) return failure(state, 'invalid-title', 'Name what you’re planning.');
+    if (title.length > MAX_PLAN_TITLE) return failure(state, 'invalid-title', 'Keep it to ' + MAX_PLAN_TITLE + ' characters or fewer.');
+    var t = cleanPlanTimes(item);
+    if (t.error) return failure(state, 'invalid-time', t.error);
+    return editAgenda(state, date, function (e) {
+      if (e.items.length >= MAX_DAY_ITEMS) return { error: 'too-many', message: 'A day can have up to ' + MAX_DAY_ITEMS + ' extra items.' };
+      var id = nextItemId(e.items, 'p');
+      e.items.push({ id: id, title: title, time: t.time, end: t.end });
+      return { id: id };
+    });
+  }
+
+  /** Remove a one-off item from the plan for `date`. */
+  function removeAgendaItem(state, date, id, today) {
+    var bad = agendaDateError(state, date, today);
+    if (bad) return bad;
+    return editAgenda(state, date, function (e) {
+      var before = e.items.length;
+      e.items = e.items.filter(function (it) { return it.id !== id; });
+      if (e.items.length === before) return { error: 'unknown-item', message: 'That item is no longer in the plan.' };
+      return {};
+    });
+  }
+
+  /** Skip a regular schedule item on `date` (or bring it back). */
+  function setAgendaSkip(state, date, id, skip, today) {
+    var bad = agendaDateError(state, date, today);
+    if (bad) return bad;
+    if (!agendaFor(state, date).some(function (it) { return it.regular && it.id === id; })) {
+      return failure(state, 'unknown-item', 'That isn’t on your schedule that day.');
+    }
+    return editAgenda(state, date, function (e) {
+      e.skip = e.skip.filter(function (x) { return x !== id; });
+      if (skip) {
+        e.skip.push(id);
+        e.done = e.done.filter(function (x) { return x !== id; });
+      }
+      return {};
+    });
+  }
+
+  /** Tick an item in today's plan off (or back on). */
+  function setAgendaDone(state, date, id, done, today) {
+    if (date !== today) return failure(state, 'not-today', 'Only today’s plan can be ticked off.');
+    var item = agendaFor(state, date).filter(function (it) { return it.id === id && !it.skipped; })[0];
+    if (!item) return failure(state, 'unknown-item', 'That item is no longer in the plan.');
+    return editAgenda(state, date, function (e) {
+      e.done = e.done.filter(function (x) { return x !== id; });
+      if (done) e.done.push(id);
+      return {};
+    });
+  }
+
   function cleanAmount(input) {
     if (input === null) return { amount: null };
     var unit = input && input.unit;
@@ -791,7 +1021,18 @@
       // A weekly plan decides the schedule: days without a workout are rest days.
       if (isWeeklySplit(sp.split)) out.schedule = cleanSchedule({ type: 'days', days: planDays(sp.split) }).schedule;
     }
+    if (opts.planner !== undefined) {
+      var pl = cleanPlanner(opts.planner);
+      if (pl.error) return { error: pl.error };
+      out.planner = pl.planner;
+    }
     return { details: out };
+  }
+
+  /** A planner goal is ticked by planning, so it can't track an amount or workouts. */
+  function plannerConflict(h) {
+    if (h.planner && (h.amount || h.split)) return 'A day planner goal is checked off by planning tomorrow, so it can’t also track time, water or workouts.';
+    return '';
   }
 
   function addHabit(state, name, today, opts) {
@@ -808,8 +1049,9 @@
     var next = clone(state);
     var id = nextHabitId(next);
     var habit = { id: id, name: cleanName(name), createdOn: today, status: 'active', archivedOn: null,
-      icon: null, color: null, schedule: { type: 'daily' }, reminder: null, split: null, amount: null };
+      icon: null, color: null, schedule: { type: 'daily' }, reminder: null, split: null, amount: null, planner: null };
     Object.keys(details.details).forEach(function (k) { habit[k] = details.details[k]; });
+    if (plannerConflict(habit)) return failure(state, 'invalid-details', plannerConflict(habit));
     next.habits.push(habit);
     return result(syncTodayRecord(next, today), { id: id });
   }
@@ -842,6 +1084,7 @@
       h.split = { workouts: h.split.workouts, start: today, offset: Math.max(0, splitIndex(state, h, today)) };
     }
     Object.keys(details.details).forEach(function (k) { h[k] = details.details[k]; });
+    if (plannerConflict(h)) return failure(state, 'invalid-details', plannerConflict(h));
     return result(syncTodayRecord(next, today), {});
   }
 
@@ -1180,6 +1423,8 @@
         if (h.reminder !== null && !(typeof h.reminder === 'string' && TIME_RE.test(h.reminder))) err(label + '.reminder is invalid.');
         if (!validSplit(h.split)) err(label + '.split is invalid.');
         if (h.amount !== null && !validAmount(h.amount, UNITS[h.amount && h.amount.unit] && UNITS[h.amount.unit].minGoal)) err(label + '.amount is invalid.');
+        if (!validPlanner(h.planner)) err(label + '.planner is invalid.');
+        else if (h.planner && (h.amount || h.split)) err(label + ' is a day planner with an amount or workouts.');
       });
       if (active > MAX_ACTIVE_HABITS) err('Too many active habits.');
     }
@@ -1251,6 +1496,15 @@
       Object.keys(s.focus).forEach(function (d) {
         var t = s.focus[d];
         if (!isValidDateKey(d) || typeof t !== 'string' || !t.trim() || t.length > MAX_FOCUS_LENGTH) err('focus[' + d + '] is invalid.');
+      });
+    }
+    if (!isPlainObject(s.agenda)) {
+      err('agenda must be an object keyed by date.');
+    } else {
+      var agendaDates = Object.keys(s.agenda);
+      if (agendaDates.length > MAX_DAYS) err('Too many planned days.');
+      agendaDates.forEach(function (d) {
+        if (!isValidDateKey(d) || !validAgendaEntry(s.agenda[d])) err('agenda[' + d + '] is invalid.');
       });
     }
     if (!isPlainObject(s.settings) || (s.settings.weekStart !== 0 && s.settings.weekStart !== 1)) err('settings.weekStart must be 0 or 1.');
@@ -1569,6 +1823,20 @@
       return next;
     },
 
+    9: function v9ToV10(old) {
+      // Adds the day planner: goals gain planner: null, and an empty agenda.
+      if (!isPlainObject(old)) throw new Error('Saved data is not an object.');
+      if (!Array.isArray(old.habits)) throw new Error('habits must be a list.');
+      var next = clone(old);
+      next.schemaVersion = 10;
+      next.habits = next.habits.map(function (h) {
+        if (isPlainObject(h) && h.planner === undefined) h.planner = null;
+        return h;
+      });
+      if (next.agenda === undefined) next.agenda = {};
+      return next;
+    },
+
     7: function v7ToV8(old) {
       if (!isPlainObject(old)) throw new Error('Saved data is not an object.');
       var next = clone(old);
@@ -1610,7 +1878,7 @@
       return { ok: false, error: 'invalid', message: 'The data could not be upgraded: ' + e.message };
     }
     // Keep only the stored fields; exports also carry computed ones.
-    var state = { schemaVersion: data.schemaVersion, habits: data.habits, days: data.days, focus: data.focus, settings: data.settings, timer: data.timer };
+    var state = { schemaVersion: data.schemaVersion, habits: data.habits, days: data.days, focus: data.focus, agenda: data.agenda, settings: data.settings, timer: data.timer };
     var errors = validateState(state);
     if (errors.length) {
       return { ok: false, error: 'invalid', message: 'The data is damaged or incomplete: ' + errors.slice(0, 3).join(' '), errors: errors };
@@ -1658,6 +1926,7 @@
       habits: clone(state.habits),
       days: clone(state.days),
       focus: clone(state.focus),
+      agenda: clone(state.agenda || {}),
       settings: clone(state.settings),
       timer: clone(state.timer === undefined ? null : state.timer),
       dailyRecords: dailyRecords
@@ -1721,6 +1990,15 @@
     renameHabit: renameHabit,
     reorderHabit: reorderHabit,
     setFocus: setFocus,
+    cleanPlanner: cleanPlanner,
+    plannerHabit: plannerHabit,
+    agendaFor: agendaFor,
+    addAgendaItem: addAgendaItem,
+    removeAgendaItem: removeAgendaItem,
+    setAgendaSkip: setAgendaSkip,
+    setAgendaDone: setAgendaDone,
+    MAX_PLAN_TITLE: MAX_PLAN_TITLE,
+    MAX_PLAN_AHEAD: MAX_PLAN_AHEAD,
     setWeekStart: setWeekStart,
     scheduleOn: scheduleOn,
     cleanSchedule: cleanSchedule,
