@@ -24,7 +24,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  var SCHEMA_VERSION = 8;
+  var SCHEMA_VERSION = 9;
   var APP_ID = 'day-by-day';
   var DAY_MS = 24 * 60 * 60 * 1000;
   var MIN_YEAR = 1970;
@@ -130,10 +130,15 @@
    *     schedule: { type: 'daily' } | { type: 'weekdays' }
    *             | { type: 'days', days: [0-6, Sunday = 0] } | { type: 'weekly', times: 1-6 }
    *     reminder: 'HH:MM' or null.
-   *     split: null or { workouts: [name], start: date, offset: n }, a workout
-   *       rotation: each day the goal is due takes the next workout, and the
-   *       day it is due on `start` gets workouts[offset]. Times-per-week goals
-   *       move on to the next workout after each day they're done.
+   *     split: null, or a workout split, either
+   *       - a weekly plan: { type: 'weekly', days: [7 names or null, Sunday
+   *         = 0], moves: { date: name } }. Each weekday has its own workout
+   *         (null is a rest day, when the goal isn't due). moves holds this
+   *         week's swaps, so the next week goes back to the plan; or
+   *       - a rotation: { workouts: [name], start: date, offset: n }: each
+   *         day the goal is due takes the next workout, and the day it is due
+   *         on `start` gets workouts[offset]. Times-per-week goals move on to
+   *         the next workout after each day they're done.
    *     amount: null, or a daily amount logged in pieces: { unit, goal } where
    *       unit is 'min' (time: "study for 2 hours", 30 minutes at a time),
    *       'ml' or 'oz' (water: 2 litres a day, a glass at a time). See UNITS.
@@ -205,13 +210,36 @@
     return { error: 'Choose how often this goal repeats.' };
   }
 
+  function isWeeklySplit(sp) {
+    return !!sp && sp.type === 'weekly';
+  }
+
+  /** The weekdays a weekly plan has a workout on (Sunday = 0). */
+  function planDays(sp) {
+    var out = [];
+    sp.days.forEach(function (w, i) { if (w) out.push(i); });
+    return out;
+  }
+
   /**
-   * Normalise and validate a workout split from the goal form:
-   * { workouts: [name], current: index of the next workout } or null.
-   * `today` anchors the rotation. Returns { split } or { error }.
+   * Normalise and validate a workout split from the goal form or null:
+   * a weekly plan { type: 'weekly', days: [7 names, blank = rest] }, or a
+   * rotation { workouts: [name], current: index of the next workout }.
+   * `today` anchors a rotation. Returns { split } or { error }.
    */
   function cleanSplit(input, today) {
     if (input === null) return { split: null };
+    if (input && input.type === 'weekly') {
+      var days = [0, 1, 2, 3, 4, 5, 6].map(function (i) {
+        var w = Array.isArray(input.days) ? cleanName(input.days[i] || '') : '';
+        return w || null;
+      });
+      if (!days.some(function (w) { return w; })) return { error: 'Add a workout to at least one day.' };
+      for (var j = 0; j < 7; j++) {
+        if (days[j] && days[j].length > MAX_WORKOUT_LENGTH) return { error: 'Workout names must be ' + MAX_WORKOUT_LENGTH + ' characters or fewer.' };
+      }
+      return { split: { type: 'weekly', days: days, moves: {} } };
+    }
     var workouts = Array.isArray(input && input.workouts)
       ? input.workouts.map(cleanName).filter(function (w) { return w; })
       : [];
@@ -225,8 +253,18 @@
     return { split: { workouts: workouts, start: today, offset: current } };
   }
 
+  function validWorkoutName(w) {
+    return typeof w === 'string' && !!w && cleanName(w) === w && w.length <= MAX_WORKOUT_LENGTH;
+  }
+
   function validSplit(sp) {
     if (sp === null) return true;
+    if (isPlainObject(sp) && sp.type === 'weekly') {
+      if (Object.keys(sp).length !== 3 || !Array.isArray(sp.days) || sp.days.length !== 7 || !isPlainObject(sp.moves)) return false;
+      if (!sp.days.every(function (w) { return w === null || validWorkoutName(w); }) || !sp.days.some(function (w) { return w; })) return false;
+      var keys = Object.keys(sp.moves);
+      return keys.length <= 14 && keys.every(function (d) { return isValidDateKey(d) && validWorkoutName(sp.moves[d]); });
+    }
     if (!isPlainObject(sp) || !Array.isArray(sp.workouts) || !isValidDateKey(sp.start)) return false;
     var n = sp.workouts.length;
     if (n < 2 || n > MAX_WORKOUTS || !Number.isInteger(sp.offset) || sp.offset < 0 || sp.offset >= n) return false;
@@ -259,12 +297,14 @@
   /** Index in the split of the workout for `date` (or the next due day), or -1. */
   function splitIndex(state, habit, date) {
     var sp = habit && habit.split;
-    if (!sp || date < sp.start) return -1;
+    if (!sp || isWeeklySplit(sp) || date < sp.start) return -1;
     return (sp.offset + splitSteps(state, habit, sp.start, date)) % sp.workouts.length;
   }
 
   /** The workout a goal has on `date`, or null when it has no split. */
   function workoutOn(state, habit, date) {
+    var sp = habit && habit.split;
+    if (isWeeklySplit(sp)) return sp.moves[date] || sp.days[dayOfWeek(date)] || null;
     var i = splitIndex(state, habit, date);
     return i < 0 ? null : habit.split.workouts[i];
   }
@@ -276,6 +316,7 @@
    */
   function upcomingWorkouts(state, id, today) {
     var h = findHabit(state, id);
+    if (h && isWeeklySplit(h.split)) return weekOptions(state, h, today);
     var i = splitIndex(state, h, today);
     if (i < 0) return [];
     var n = h.split.workouts.length;
@@ -289,6 +330,36 @@
         date = d;
       }
       out.push({ index: (i + k) % n, workout: h.split.workouts[(i + k) % n], date: date });
+    }
+    return out;
+  }
+
+  /** First and last day of the week containing `date`, by the week-start setting. */
+  function weekBounds(state, date) {
+    var ws = state.settings && state.settings.weekStart === 1 ? 1 : 0;
+    var start = addDays(date, -((dayOfWeek(date) - ws + 7) % 7));
+    return { start: start, end: addDays(start, 6) };
+  }
+
+  /**
+   * Weekly plan: the other workouts in the plan, each with the later day
+   * this week it's planned on (date), or date null when it isn't coming up
+   * again this week (doing it today is then just for today).
+   * [{ workout, date, weekly: true }], in the order they come up.
+   */
+  function weekOptions(state, h, today) {
+    var current = workoutOn(state, h, today);
+    var end = weekBounds(state, today).end;
+    var out = [];
+    var seen = {};
+    if (current) seen[current] = true;
+    for (var d = addDays(today, 1); d <= end; d = addDays(d, 1)) {
+      var w = scheduleOn(h, d) && workoutOn(state, h, d);
+      if (w && !seen[w]) { seen[w] = true; out.push({ workout: w, date: d, weekly: true }); }
+    }
+    for (var k = 1; k <= 7; k++) {
+      var p = h.split.days[(dayOfWeek(today) + k) % 7];
+      if (p && !seen[p]) { seen[p] = true; out.push({ workout: p, date: null, weekly: true }); }
     }
     return out;
   }
@@ -644,6 +715,7 @@
     if (!h || !h.split || h.status !== 'active' || !rec || !rec.habits.some(function (e) { return e.id === habitId; })) {
       return failure(state, 'not-today', 'That goal has no workout today.');
     }
+    if (isWeeklySplit(h.split)) return swapWeekly(state, h, workout, today);
     var i = splitIndex(state, h, today);
     var planned = h.split.workouts[i];
     var match = upcomingWorkouts(state, habitId, today).filter(function (u) { return u.workout === workout; })[0];
@@ -656,6 +728,27 @@
     ws[i] = workout;
     ws[match.index] = planned;
     return result(syncTodayRecord(next, today), { planned: planned, movedTo: { index: match.index, date: match.date } });
+  }
+
+  /**
+   * Weekly plan: today becomes `workout`, and if `workout` is planned later
+   * this week, that day takes today's planned workout. Swaps only last for
+   * the week: next week every day goes back to the plan.
+   */
+  function swapWeekly(state, h, workout, today) {
+    var planned = workoutOn(state, h, today);
+    if (workout === planned) return result(state, { unchanged: true, planned: planned });
+    var option = weekOptions(state, h, today).filter(function (o) { return o.workout === workout; })[0];
+    if (!option) return failure(state, 'unknown-workout', 'That workout isn’t in this plan.');
+    var next = clone(state);
+    var sp = findHabit(next, h.id).split;
+    var week = weekBounds(state, today);
+    // Swaps from earlier weeks have done their job.
+    Object.keys(sp.moves).forEach(function (d) { if (d < week.start) delete sp.moves[d]; });
+    sp.moves[today] = workout;
+    if (option.date) sp.moves[option.date] = planned;
+    Object.keys(sp.moves).forEach(function (d) { if (sp.moves[d] === sp.days[dayOfWeek(d)]) delete sp.moves[d]; });
+    return result(syncTodayRecord(next, today), { planned: planned, movedTo: option.date ? { date: option.date } : null, weekly: true });
   }
 
   /* ------------------------------------------------------------------ */
@@ -695,6 +788,8 @@
       var sp = cleanSplit(opts.split, today);
       if (sp.error) return { error: sp.error };
       out.split = sp.split;
+      // A weekly plan decides the schedule: days without a workout are rest days.
+      if (isWeeklySplit(sp.split)) out.schedule = cleanSchedule({ type: 'days', days: planDays(sp.split) }).schedule;
     }
     return { details: out };
   }
@@ -736,8 +831,13 @@
     var next = clone(state);
     var h = findHabit(next, id);
     if (c.name !== undefined) h.name = cleanName(c.name);
-    // A new schedule keeps the split where it is: re-anchor it on today.
-    if (h.split && details.details.split === undefined && details.details.schedule &&
+    // Saving the same weekly plan keeps this week's swaps.
+    var newSplit = details.details.split;
+    if (isWeeklySplit(newSplit) && isWeeklySplit(h.split) && JSON.stringify(newSplit.days) === JSON.stringify(h.split.days)) {
+      newSplit.moves = clone(h.split.moves);
+    }
+    // A new schedule keeps a rotation where it is: re-anchor it on today.
+    if (h.split && !isWeeklySplit(h.split) && details.details.split === undefined && details.details.schedule &&
         JSON.stringify(details.details.schedule) !== JSON.stringify(h.schedule)) {
       h.split = { workouts: h.split.workouts, start: today, offset: Math.max(0, splitIndex(state, h, today)) };
     }
@@ -1267,6 +1367,7 @@
    *       goals) and the day's workout to daily records.
    *   6 — Adds time goals (minutes, null for existing goals), time logs and
    *       "partly done" marks to daily records.
+   *   9 — Adds weekly workout plans (split.type 'weekly'); nothing to convert.
    *   8 — Adds the study timer (timer: null when none is running).
    *   7 — Generalises time goals into amount goals, so water can be tracked
    *       too: minutes: n becomes amount: { unit: 'min', goal: n } on goals
@@ -1422,6 +1523,14 @@
         if (isPlainObject(h) && h.minutes === undefined) h.minutes = null;
         return h;
       });
+      return next;
+    },
+
+    8: function v8ToV9(old) {
+      // Adds weekly workout plans as a kind of split; existing data is unchanged.
+      if (!isPlainObject(old)) throw new Error('Saved data is not an object.');
+      var next = clone(old);
+      next.schemaVersion = 9;
       return next;
     },
 
@@ -1621,6 +1730,8 @@
     splitIndex: splitIndex,
     workoutOn: workoutOn,
     upcomingWorkouts: upcomingWorkouts,
+    isWeeklySplit: isWeeklySplit,
+    weekBounds: weekBounds,
     swapWorkout: swapWorkout,
     FOCUS_MS: FOCUS_MS,
     BREAK_MS: BREAK_MS,

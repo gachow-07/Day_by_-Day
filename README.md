@@ -56,7 +56,7 @@ The app has three sections: a left sidebar on screens 768px and wider, and a bot
 
 ### Managing goals
 
-**Edit goals** lists your goals. Drag a handle to reorder (or focus it and use ↑/↓), and use **Edit** to open a goal. The goal form has: name, an optional icon (86 to choose from, grouped into Fitness, Food and health, Rest and mind, Learning and work, Home and money, People and fun, and Other) and colour, a **schedule** (every day, weekdays, selected days, or a number of times per week), an optional **reminder** time, an optional **workout split**, and status actions (**Pause**/**Resume**, **Archive** or **Delete**) with a plain explanation of each.
+**Edit goals** lists your goals. Drag a handle to reorder (or focus it and use ↑/↓), and use **Edit** to open a goal. The goal form has: name, an optional icon (86 to choose from, grouped into Fitness, Food and health, Rest and mind, Learning and work, Home and money, People and fun, and Other) and colour, a **schedule** (every day, weekdays, selected days, or a number of times per week), an optional **reminder** time, an optional **workout plan** (same workout on the same weekday, or a rotation), and status actions (**Pause**/**Resume**, **Archive** or **Delete**) with a plain explanation of each.
 
 - Changes apply **from today**. Every day keeps its own record of which goals were required and what they were called, so renaming, pausing or removing a goal never changes past days or their stats, and a new goal never counts against days before it existed.
 - Removing a goal that has history **archives** it: it leaves today's list but stays in history and Stats, and can be restored. A goal with no history yet (for example a typo added today) is deleted outright.
@@ -86,9 +86,14 @@ Goals measured in time (such as "Study 2 h a day") have a **START** button next 
 
 ### Workout splits
 
-Turn on **Rotate through workouts** in a goal's form and list the workouts in order, one per line (for example Legs, Chest, Back, Shoulders), then pick today's workout. Each day the goal is due, Today shows that day's workout on the goal, and the split moves on to the next one. Days the goal isn't scheduled are skipped, so leave rest days out of the schedule. For a times-per-week goal the split moves on each time you check it off instead.
+Turn on **Plan workouts** in a goal's form and choose how the plan works:
 
-Did a different workout? Tap the **⋯** button on the right of the goal and pick what you actually did. The two workouts swap places: today becomes the one you did, and the one you were meant to do moves to the day that workout was planned. For example, on leg day with shoulders planned for Wednesday, choosing Shoulders makes today shoulder day and moves legs to Wednesday. Choosing the original workout again swaps them back. The menu shows when each workout is next planned, and **Edit split** opens the goal form. Each day's record keeps the workout done that day, and it appears in the calendar's day details and in exports.
+- **Same day every week** (the default): type a workout next to each day, for example Mon Chest, Wed Legs, Fri Shoulders. Leave a day blank to make it a rest day; the goal's schedule follows the plan, so it's only due on days with a workout. Today shows the day's workout on the goal.
+- **Rotate in order**: list the workouts in order, one per line (for example Legs, Chest, Back, Shoulders), then pick today's workout. Each day the goal is due, the split moves on to the next one. Days the goal isn't scheduled are skipped, so leave rest days out of the schedule. For a times-per-week goal the split moves on each time you check it off instead.
+
+With a weekly plan, swaps only last for the week. On Wednesday (Legs), choosing Shoulders from the **⋯** menu makes today shoulder day and moves Legs to Friday, where Shoulders was planned. Next week, Wednesday is Legs and Friday is Shoulders again. Picking a workout that isn't planned later in the week (shown as "Just for today") only changes today. The week starts on the day set in Settings.
+
+With a rotation, did a different workout? Tap the **⋯** button on the right of the goal and pick what you actually did. The two workouts swap places: today becomes the one you did, and the one you were meant to do moves to the day that workout was planned. For example, on leg day with shoulders planned for Wednesday, choosing Shoulders makes today shoulder day and moves legs to Wednesday. Choosing the original workout again swaps them back. The menu shows when each workout is next planned, and **Edit goal** opens the goal form. Each day's record keeps the workout done that day, and it appears in the calendar's day details and in exports.
 
 ### Reminders
 
@@ -127,7 +132,7 @@ The tests in `tests/` cover:
 - the study timer: elapsed time from timestamps with pauses, reloads, rounding and the under-a-minute skip, logging through the normal log (and undo), past midnight to the start day, one timer at a time, focus blocks (25/5) logged once each and caught up after an absence, the 3-hour check with edited minutes, the 24-hour cap, validation, migration and export
 - water goals: logging, units and validation, cups and gallons stored as fl oz, ml/oz conversion, the daily average, and the v6 → 7 migration
 - partly done and time goals: logging in pieces, reaching the goal, undo, ticking and unticking a timed goal, partial credit in completion rates without Locked In or streaks, calendar and grid states, switching a goal to or from timed, validation, the v5 → 6 migration, and export/import
-- workout splits: rotation on due days only and over many weeks, times-per-week splits, swapping a workout (and swapping back), re-anchoring when the schedule changes, validation, the v4 → 5 migration, and workouts in day details and exports
+- workout splits: rotation on due days only and over many weeks, times-per-week splits, swapping a workout (and swapping back), re-anchoring when the schedule changes, validation, the v4 → 5 migration, weekly plans (schedule from the plan, swaps that last one week, workouts not planned later that week, swapping back, a Monday week start, validation, import and the v8 → 9 migration), and workouts in day details and exports
 - plan entitlements (Early access grants everything; Free and Pro limits)
 - theme preference handling (fallback to Auto, blocked storage)
 - sync decisions: first-sign-in upload, fresh-device download, live changes, conflicts, stale devices, unreadable account data
@@ -178,11 +183,11 @@ If you are not signed in, everything lives in this browser only. Clearing site d
 
 ### Saved-data format and migrations
 
-Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaVersion` field. The current version is **8**:
+Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaVersion` field. The current version is **9**:
 
 ```js
 {
-  schemaVersion: 8,
+  schemaVersion: 9,
   habits: [{
     id: 'h1', name: 'Workout', createdOn: '2026-09-01', status: 'active', archivedOn: null,
     icon: 'dumbbell',              // Lucide icon name or null
@@ -193,6 +198,11 @@ Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaV
                                    // or null. The day the goal is due on `start` gets workouts[offset],
                                    // and each later due day (or, for times-per-week goals, each day
                                    // after one it was done) the next workout.
+                                   // Or a weekly plan: { type: 'weekly', days: [null, 'Chest', null,
+                                   // 'Legs', null, 'Shoulders', null], moves: { '2026-09-30': 'Shoulders',
+                                   // '2026-10-02': 'Legs' } }. days is indexed by weekday (0 = Sunday,
+                                   // null = rest), and schedule is { type: 'days' } matching it. moves
+                                   // holds this week's swaps by date; older ones are dropped.
     amount: { unit: 'oz', goal: 64, display: 'cup' }
                                    // or null: a daily amount logged in pieces. unit is 'min'
                                    // (time, 5-1440), 'ml' (water, 100-10000) or 'oz' (water in
@@ -217,6 +227,7 @@ Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaV
 
 Streaks and all statistics are calculated from `days` (see `js/stats.js`); no counters are stored.
 
+- **Version 8 → 9:** adds weekly workout plans (`split.type: 'weekly'`). Existing data is unchanged; only the version number changes. The original is first copied to `day-by-day.backup.v8.<timestamp>`.
 - **Version 7 → 8:** adds `timer: null` (no study timer running). Nothing else changes. The original is first copied to `day-by-day.backup.v7.<timestamp>`.
 - **Version 6 → 7:** time goals become amount goals: `minutes: n` turns into `amount: { unit: 'min', goal: n }` on goals and daily records (and `minutes: null` into `amount: null`), so water can use the same logging. Logs and every statistic are unchanged. The original is first copied to `day-by-day.backup.v6.<timestamp>`.
 - **Version 5 → 6:** goals gain `minutes: null` (no time goal). Records are unchanged; `logs` and `partial` are optional. The original is first copied to `day-by-day.backup.v5.<timestamp>`.

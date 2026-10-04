@@ -10,8 +10,8 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="preload" href="fonts/instrument-sans-latin-var.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="fonts/jetbrains-mono-latin-var.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/styles.css?v=21">
-  <script src="js/theme.js?v=21"></script>
+  <link rel="stylesheet" href="css/styles.css?v=22">
+  <script src="js/theme.js?v=22"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -456,6 +456,7 @@
           </div>
         </div>
         <p class="field-hint" id="gf-schedule-hint">Days off don’t affect your streak.</p>
+        <p class="field-hint" id="gf-schedule-plan" hidden>Set by your weekly workout plan: days without a workout are rest days.</p>
         <p id="gf-schedule-error" class="field-error" hidden></p>
       </fieldset>
 
@@ -488,16 +489,24 @@
 
       <fieldset class="field">
         <legend class="label">Workout split</legend>
-        <label class="checkbox"><input type="checkbox" id="gf-split"><span>Rotate through workouts</span></label>
+        <label class="checkbox"><input type="checkbox" id="gf-split"><span>Plan workouts</span></label>
         <div id="gf-split-wrap" class="split-fields" hidden>
+          <div class="radio-list split-kind" role="radiogroup" aria-label="How the plan works">
+            <label class="radio"><input type="radio" name="gf-split-kind" value="weekly" checked><span>Same day every week</span></label>
+            <label class="radio"><input type="radio" name="gf-split-kind" value="rotation"><span>Rotate in order</span></label>
+          </div>
+          <div id="gf-week-plan" class="week-plan" role="group" aria-label="Workout for each day"></div>
+          <datalist id="gf-workout-names"></datalist>
+          <div id="gf-rotation-wrap" class="split-fields" hidden>
           <label for="gf-workouts" class="label-inline">One per line, in order</label>
           <textarea id="gf-workouts" class="input textarea" rows="4" maxlength="700" placeholder="Legs&#10;Chest&#10;Back&#10;Shoulders" aria-describedby="gf-split-hint gf-split-error"></textarea>
           <div class="inline-field">
             <label for="gf-next" class="label-inline" id="gf-next-label">Today’s workout</label>
             <select id="gf-next" class="input input-sm"></select>
           </div>
+          </div>
         </div>
-        <p class="field-hint" id="gf-split-hint">Each due day shows the next workout. Did something else? Use ⋯ on the goal to swap.</p>
+        <p class="field-hint" id="gf-split-hint"></p>
         <p id="gf-split-error" class="field-error" hidden></p>
       </fieldset>
 
@@ -597,14 +606,14 @@
     </form>
   </dialog>
 
-  <script src="js/icons.js?v=21"></script>
-  <script src="js/core.js?v=21"></script>
-  <script src="js/stats.js?v=21"></script>
-  <script src="js/plans.js?v=21"></script>
-  <script src="js/storage.js?v=21"></script>
-  <script src="js/sync.js?v=21"></script>
-  <script src="js/firebase-config.js?v=21"></script>
-  <script src="js/cloud.js?v=21"></script>
-  <script src="js/app.js?v=21"></script>
+  <script src="js/icons.js?v=22"></script>
+  <script src="js/core.js?v=22"></script>
+  <script src="js/stats.js?v=22"></script>
+  <script src="js/plans.js?v=22"></script>
+  <script src="js/storage.js?v=22"></script>
+  <script src="js/sync.js?v=22"></script>
+  <script src="js/firebase-config.js?v=22"></script>
+  <script src="js/cloud.js?v=22"></script>
+  <script src="js/app.js?v=22"></script>
 </body>
 </html>

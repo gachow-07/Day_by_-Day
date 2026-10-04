@@ -552,6 +552,7 @@
   }
 
   function upcomingLabel(u, k) {
+    if (u.weekly && !u.date) return 'Just for today';
     if (u.date) return u.date === core.addDays(today, 1) ? 'Planned tomorrow' : 'Planned ' + formatDate(u.date, 'dowShort') + ', ' + formatDate(u.date, 'short');
     return k === 0 ? 'Up next' : 'In ' + (k + 1) + ' sessions';
   }
@@ -726,6 +727,13 @@
       var r = core.swapWorkout(state, id, item.dataset.workout, today);
       if (!r.ok) { announce(r.message); renderToday(); return; }
       if (r.unchanged || !commit(r.state)) return;
+      focusGoalButton(id);
+      if (r.weekly) {
+        var day = r.movedTo && (r.movedTo.date === core.addDays(today, 1) ? 'tomorrow' : formatDate(r.movedTo.date, 'dowLong'));
+        announce('Today is now ' + item.dataset.workout + '.' + (day ? ' ' + r.planned + ' moved to ' + day + '.' : '') + ' Next week goes back to your plan.');
+        showToast(day ? 'Swapped this week: ' + item.dataset.workout + ' today, ' + r.planned + (day === 'tomorrow' ? ' tomorrow' : ' on ' + day) : item.dataset.workout + ' today. Next week is back to plan');
+        return;
+      }
       var when = r.movedTo.date
         ? (r.movedTo.date === core.addDays(today, 1) ? 'tomorrow' : formatDate(r.movedTo.date, 'dowLong'))
         : 'its place in the rotation';
@@ -1470,7 +1478,7 @@
   function goalSub(h) {
     var parts = [scheduleText(h.schedule)];
     if (h.amount) parts.push(formatAmount(h.amount.goal, h.amount) + (h.amount.unit === 'min' ? ' a day' : ' of water a day'));
-    if (h.split) parts.push(h.split.workouts.length + '-workout split');
+    if (h.split) parts.push(core.isWeeklySplit(h.split) ? 'Weekly workout plan' : h.split.workouts.length + '-workout split');
     if (h.reminder) parts.push('Reminder at ' + formatTime(h.reminder));
     if (h.status === 'paused') parts.unshift('Paused');
     if (h.status === 'archived') parts = ['Archived ' + formatDate(h.archivedOn, 'short')];
@@ -1731,9 +1739,74 @@
     $('gf-times-wrap').hidden = type !== 'weekly';
     $('gf-remind-wrap').hidden = !$('gf-remind').checked;
     $('gf-split-wrap').hidden = !$('gf-split').checked;
+    var weeklyPlan = $('gf-split').checked && splitKind() === 'weekly';
+    $('gf-week-plan').hidden = !weeklyPlan;
+    $('gf-rotation-wrap').hidden = weeklyPlan;
+    $('gf-split-hint').textContent = !$('gf-split').checked ? ''
+      : weeklyPlan ? 'Blank days are rest days. Did something else? Use ⋯ on the goal to swap days: it only lasts that week, then your plan comes back.'
+        : 'Each due day shows the next workout. Did something else? Use ⋯ on the goal to swap.';
+    $('gf-split-hint').hidden = !$('gf-split').checked;
+    // A weekly plan decides which days the goal is due.
+    Array.prototype.forEach.call(document.querySelectorAll('input[name="gf-schedule"]'), function (r) {
+      r.disabled = weeklyPlan || (!plans.can('flexibleSchedules') && r.value !== 'daily');
+    });
+    $('gf-schedule-plan').hidden = !weeklyPlan;
+    if (weeklyPlan) { $('gf-days').hidden = true; $('gf-times-wrap').hidden = true; }
     var track = document.querySelector('input[name="gf-track"]:checked').value;
     $('gf-duration-wrap').hidden = track !== 'time';
     $('gf-water-wrap').hidden = track !== 'water';
+  }
+
+  function splitKind() {
+    var r = document.querySelector('input[name="gf-split-kind"]:checked');
+    return r ? r.value : 'weekly';
+  }
+
+  var COMMON_WORKOUTS = ['Push', 'Pull', 'Legs', 'Chest', 'Back', 'Shoulders', 'Arms', 'Upper', 'Lower', 'Full body', 'Core', 'Cardio', 'Mobility'];
+
+  /** Seven rows, one per weekday (in the week-start order), each naming that day's workout. */
+  function buildWeekPlan(h) {
+    var box = $('gf-week-plan');
+    box.textContent = '';
+    var days = h && h.split && core.isWeeklySplit(h.split) ? h.split.days : [null, null, null, null, null, null, null];
+    var order = weekStart() === 1 ? [1, 2, 3, 4, 5, 6, 0] : [0, 1, 2, 3, 4, 5, 6];
+    order.forEach(function (d) {
+      var row = el('div', 'week-plan-row');
+      var input = el('input', 'input input-sm week-plan-input');
+      input.type = 'text';
+      input.id = 'gf-plan-' + d;
+      input.dataset.dow = String(d);
+      input.maxLength = 40;
+      input.autocomplete = 'off';
+      input.placeholder = 'Rest';
+      input.setAttribute('list', 'gf-workout-names');
+      input.setAttribute('aria-describedby', 'gf-split-hint gf-split-error');
+      input.value = days[d] || '';
+      var label = el('label', 'week-plan-day', formatDate(core.addDays('2026-09-06', d), 'dowShort'));
+      label.htmlFor = input.id;
+      label.setAttribute('aria-label', formatDate(core.addDays('2026-09-06', d), 'dowLong'));
+      row.appendChild(label);
+      row.appendChild(input);
+      box.appendChild(row);
+    });
+    // Suggestions: workouts already used in any plan, then common ones.
+    var names = [];
+    state.habits.forEach(function (x) {
+      if (!x.split) return;
+      (core.isWeeklySplit(x.split) ? x.split.days : x.split.workouts).forEach(function (w) { if (w && names.indexOf(w) < 0) names.push(w); });
+    });
+    COMMON_WORKOUTS.forEach(function (w) { if (names.indexOf(w) < 0) names.push(w); });
+    var list = $('gf-workout-names');
+    list.textContent = '';
+    names.forEach(function (w) { var o = el('option'); o.value = w; list.appendChild(o); });
+  }
+
+  function readWeekPlan() {
+    var days = [null, null, null, null, null, null, null];
+    Array.prototype.forEach.call($('gf-week-plan').querySelectorAll('input'), function (i) {
+      days[Number(i.dataset.dow)] = core.cleanName(i.value) || null;
+    });
+    return days;
   }
 
   function formWorkouts() {
@@ -1814,12 +1887,15 @@
     $('gf-water-unit').dataset.unit = wview;
     $('gf-track-error').hidden = true;
     $('gf-split').checked = !!(h && h.split);
-    $('gf-workouts').value = h && h.split ? h.split.workouts.join('\n') : '';
+    var weekly = !(h && h.split) || core.isWeeklySplit(h.split);
+    document.querySelector('input[name="gf-split-kind"][value="' + (weekly ? 'weekly' : 'rotation') + '"]').checked = true;
+    buildWeekPlan(h);
+    $('gf-workouts').value = h && h.split && !core.isWeeklySplit(h.split) ? h.split.workouts.join('\n') : '';
     $('gf-workouts').removeAttribute('aria-invalid');
     $('gf-split-error').hidden = true;
     $('gf-next').dataset.name = '';
     syncScheduleFields();
-    syncSplitChoices(h && h.split ? core.workoutOn(state, h, today) : '');
+    syncSplitChoices(h && h.split && !core.isWeeklySplit(h.split) ? core.workoutOn(state, h, today) : '');
 
     var status = $('gf-status');
     status.hidden = !h || h.status === 'archived';
@@ -1850,6 +1926,16 @@
         .map(function (i) { return Number(i.value); });
     }
     if (type === 'weekly') schedule.times = Number($('gf-times').value);
+    var split = null;
+    if ($('gf-split').checked && splitKind() === 'weekly') {
+      split = { type: 'weekly', days: readWeekPlan() };
+      var due = [];
+      split.days.forEach(function (w, i) { if (w) due.push(i); });
+      // The plan sets the schedule (the core does the same when saving).
+      if (due.length) schedule = due.length === 7 ? { type: 'daily' } : { type: 'days', days: due };
+    } else if ($('gf-split').checked) {
+      split = { workouts: formWorkouts(), current: Number($('gf-next').value) || 0 };
+    }
     var iconInput = document.querySelector('input[name="gf-icon"]:checked');
     var colorInput = document.querySelector('input[name="gf-color"]:checked');
     return {
@@ -1858,7 +1944,7 @@
       color: colorInput && colorInput.value ? colorInput.value : null,
       schedule: schedule,
       reminder: $('gf-remind').checked ? ($('gf-time').value || null) : null,
-      split: $('gf-split').checked ? { workouts: formWorkouts(), current: Number($('gf-next').value) || 0 } : null,
+      split: split,
       amount: readAmountField()
     };
   }
@@ -1919,10 +2005,10 @@
     var sp = v.split ? core.cleanSplit(v.split, today) : {};
     $('gf-split-error').textContent = sp.error || '';
     $('gf-split-error').hidden = !sp.error;
-    $('gf-workouts').setAttribute('aria-invalid', String(!!sp.error));
+    $('gf-workouts').setAttribute('aria-invalid', String(!!sp.error && splitKind() !== 'weekly'));
     if (nameError) { $('gf-name').focus(); return; }
     if (sch.error) { $('gf-schedule').querySelector('input:checked').focus(); return; }
-    if (sp.error) { $('gf-workouts').focus(); return; }
+    if (sp.error) { (splitKind() === 'weekly' ? $('gf-week-plan').querySelector('input') : $('gf-workouts')).focus(); return; }
     var amountError = v.amount ? (isNaN(v.amount.goal) ? (v.amount.unit === 'min' ? 'Enter a time, like 1 h 30 min.' : 'Enter your water goal as a number, like 8.') : core.cleanAmount(v.amount).error || '') : '';
     if (amountError && v.amount && v.amount.display === 'cup' && !isNaN(v.amount.goal)) amountError = 'Set a water goal between ½ cup and 48 cups.';
     if (amountError && v.amount && v.amount.display === 'gal' && !isNaN(v.amount.goal)) amountError = 'Set a water goal of up to 3 gallons.';
@@ -3123,14 +3209,18 @@
     // Goal form
     $('goal-form').addEventListener('submit', onGoalFormSubmit);
     $('goal-form').addEventListener('change', function (e) {
-      if (e.target.name === 'gf-schedule' || e.target.name === 'gf-track' || e.target.id === 'gf-remind' || e.target.id === 'gf-split') syncScheduleFields();
+      if (e.target.name === 'gf-schedule' || e.target.name === 'gf-track' || e.target.name === 'gf-split-kind' || e.target.id === 'gf-remind' || e.target.id === 'gf-split') syncScheduleFields();
       if (e.target.name === 'gf-track' && e.target.value === 'water' && !editingId) onTrackWater();
       if (e.target.id === 'gf-water-unit') onWaterUnit();
       if (e.target.name === 'gf-schedule' || e.target.name === 'gf-days' || e.target.closest('#gf-days')) syncSplitChoices();
       if (e.target.id === 'gf-next') $('gf-next').dataset.name = formWorkouts()[Number($('gf-next').value)] || '';
-      if (e.target.id === 'gf-split' && e.target.checked && !formWorkouts().length) $('gf-workouts').focus();
+      if (e.target.id === 'gf-split' && e.target.checked) (splitKind() === 'weekly' ? $('gf-week-plan').querySelector('input') : $('gf-workouts')).focus();
     });
     $('gf-workouts').addEventListener('input', function () { syncSplitChoices(); });
+    $('gf-week-plan').addEventListener('input', function () {
+      if (!readWeekPlan().some(Boolean)) return;
+      $('gf-split-error').hidden = true;
+    });
 
     // Workout menu
     $('goals-card').addEventListener('click', function (e) {

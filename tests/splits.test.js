@@ -124,3 +124,101 @@ test('workouts appear in day details and exports', () => {
   assert.equal(back.ok, true, back.message);
   assert.deepEqual(back.state, s);
 });
+
+/* Weekly plan: a set workout for each day of the week */
+
+// Sun=0 … Sat=6. Rest on Sunday and Thursday.
+const PLAN = [null, 'Chest', 'Back', 'Legs', null, 'Shoulders', 'Arms'];
+const WED = '2026-09-09';
+const FRI = '2026-09-11';
+const NEXT_WED = '2026-09-16';
+const NEXT_FRI = '2026-09-18';
+
+function withPlan(date, weekStart) {
+  let s = withHabits(date, ['Gym', 'Read']);
+  if (weekStart === 1) s = core.setWeekStart(s, 1).state;
+  return core.updateHabit(s, 'h1', { split: { type: 'weekly', days: PLAN } }, date).state;
+}
+
+test('each day of the week has its own workout, and rest days are not due', () => {
+  let s = withPlan(MON);
+  const h = core.findHabit(s, 'h1');
+  assert.deepEqual(h.split, { type: 'weekly', days: PLAN, moves: {} });
+  assert.deepEqual(h.schedule, { type: 'days', days: [1, 2, 3, 5, 6] }, 'the plan sets the schedule');
+  assert.equal(workouts(s, MON), 'Chest');
+  s = openOn(s, WED);
+  assert.equal(workouts(s, '2026-09-08'), 'Back');
+  assert.equal(workouts(s, WED), 'Legs');
+  s = openOn(s, '2026-09-10');                      // Thursday: rest
+  assert.equal(s.days['2026-09-10'].habits.some((e) => e.id === 'h1'), false);
+  assert.equal(core.workoutOn(s, core.findHabit(s, 'h1'), '2026-09-14'), 'Chest', 'the next Monday is Chest again');
+});
+
+test('swapping is just for this week: the next week goes back to the plan', () => {
+  let s = openOn(withPlan(MON), WED);               // Wednesday: Legs
+  const r = core.swapWorkout(s, 'h1', 'Shoulders', WED);
+  assert.equal(r.ok, true, r.message);
+  assert.equal(r.planned, 'Legs');
+  assert.deepEqual(r.movedTo, { date: FRI });
+  s = r.state;
+  assert.equal(workouts(s, WED), 'Shoulders');
+  assert.equal(core.workoutOn(s, core.findHabit(s, 'h1'), FRI), 'Legs', 'Friday this week does the legs');
+  assert.deepEqual(core.findHabit(s, 'h1').split.days, PLAN, 'the saved plan is unchanged');
+  s = openOn(s, FRI);
+  assert.equal(workouts(s, FRI), 'Legs');
+  s = openOn(s, NEXT_WED);
+  assert.equal(workouts(s, NEXT_WED), 'Legs', 'next Wednesday is back to legs');
+  assert.equal(core.workoutOn(s, core.findHabit(s, 'h1'), NEXT_FRI), 'Shoulders');
+  assert.equal(workouts(s, WED), 'Shoulders', 'last week keeps what was done');
+});
+
+test('a workout not coming up again this week changes just today', () => {
+  let s = openOn(withPlan(MON), WED);
+  const up = core.upcomingWorkouts(s, 'h1', WED);
+  assert.deepEqual(up.map((u) => [u.workout, u.date]), [['Shoulders', FRI], ['Arms', '2026-09-12'], ['Chest', null], ['Back', null]]);
+  const r = core.swapWorkout(s, 'h1', 'Chest', WED);
+  assert.equal(r.movedTo, null);
+  s = r.state;
+  assert.equal(workouts(s, WED), 'Chest');
+  assert.deepEqual(core.findHabit(s, 'h1').split.moves, { [WED]: 'Chest' });
+  assert.equal(core.swapWorkout(s, 'h1', 'Cardio', WED).ok, false, 'only workouts in the plan');
+});
+
+test('swapping back restores the plan, and old swaps are cleared', () => {
+  let s = openOn(withPlan(MON), WED);
+  s = core.swapWorkout(s, 'h1', 'Shoulders', WED).state;
+  s = core.swapWorkout(s, 'h1', 'Legs', WED).state;
+  assert.deepEqual(core.findHabit(s, 'h1').split.moves, {}, 'back to the plan, nothing left over');
+  s = core.swapWorkout(s, 'h1', 'Shoulders', WED).state;
+  s = openOn(s, NEXT_WED);
+  s = core.swapWorkout(s, 'h1', 'Arms', NEXT_WED).state;
+  assert.deepEqual(core.findHabit(s, 'h1').split.moves, { [NEXT_WED]: 'Arms', '2026-09-19': 'Legs' }, 'last week’s swaps are dropped');
+});
+
+test('the week ends where the week-start setting says', () => {
+  // Week starting Monday: from Saturday, Sunday is still this week, but it is a rest day.
+  let s = openOn(withPlan(MON, 1), '2026-09-12');
+  assert.deepEqual(core.weekBounds(s, '2026-09-12'), { start: MON, end: '2026-09-13' });
+  const r = core.swapWorkout(s, 'h1', 'Chest', '2026-09-12');
+  assert.equal(r.movedTo, null, 'Monday is next week, so Saturday changes alone');
+});
+
+test('weekly plans are validated, keep swaps on resave, and import back', () => {
+  const s0 = withHabits(MON, ['Gym']);
+  assert.match(core.updateHabit(s0, 'h1', { split: { type: 'weekly', days: [null, '', ' ', null, null, null, null] } }, MON).message, /at least one day/);
+  let s = core.swapWorkout(withPlan(MON), 'h1', 'Back', MON).state;
+  s = core.updateHabit(s, 'h1', { name: 'Lift', split: { type: 'weekly', days: PLAN } }, MON).state;
+  assert.deepEqual(core.findHabit(s, 'h1').split.moves, { [MON]: 'Back', '2026-09-08': 'Chest' }, 'same plan keeps this week’s swaps');
+  const changed = core.updateHabit(s, 'h1', { split: { type: 'weekly', days: ['Yoga', null, null, null, null, null, null] } }, MON).state;
+  assert.deepEqual(core.findHabit(changed, 'h1').split.moves, {});
+  assert.deepEqual(core.validateState(s), []);
+  const bad = JSON.parse(JSON.stringify(s));
+  bad.habits[0].split.days = ['A', 'B'];
+  assert.match(core.validateState(bad).join(' '), /split is invalid/);
+  const back = core.parseImport(JSON.stringify(core.buildExport(s, new Date())));
+  assert.equal(back.ok, true, back.message);
+  assert.deepEqual(back.state, s);
+  const v8 = JSON.parse(JSON.stringify(withHabits(MON, ['Gym'])));
+  v8.schemaVersion = 8;
+  assert.equal(core.migrate(v8).ok, true);
+});
