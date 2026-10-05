@@ -538,19 +538,43 @@
   }
 
   /** Add a one-off item { title, time, end } to the plan for `date` (today or later). */
+  /** Check a one-off item's title and times: { title, time, end } or { error, message }. */
+  function cleanAgendaItem(item) {
+    var title = cleanPlanTitle(item && item.title);
+    if (!title) return { error: 'invalid-title', message: 'Name what you’re planning.' };
+    if (title.length > MAX_PLAN_TITLE) return { error: 'invalid-title', message: 'Keep it to ' + MAX_PLAN_TITLE + ' characters or fewer.' };
+    var t = cleanPlanTimes(item);
+    if (t.error) return { error: 'invalid-time', message: t.error };
+    return { title: title, time: t.time, end: t.end };
+  }
+
   function addAgendaItem(state, date, item, today) {
     var bad = agendaDateError(state, date, today);
     if (bad) return bad;
-    var title = cleanPlanTitle(item && item.title);
-    if (!title) return failure(state, 'invalid-title', 'Name what you’re planning.');
-    if (title.length > MAX_PLAN_TITLE) return failure(state, 'invalid-title', 'Keep it to ' + MAX_PLAN_TITLE + ' characters or fewer.');
-    var t = cleanPlanTimes(item);
-    if (t.error) return failure(state, 'invalid-time', t.error);
+    var t = cleanAgendaItem(item);
+    if (t.error) return failure(state, t.error, t.message);
+    var title = t.title;
     return editAgenda(state, date, function (e) {
       if (e.items.length >= MAX_DAY_ITEMS) return { error: 'too-many', message: 'A day can have up to ' + MAX_DAY_ITEMS + ' extra items.' };
       var id = nextItemId(e.items, 'p');
       e.items.push({ id: id, title: title, time: t.time, end: t.end });
       return { id: id };
+    });
+  }
+
+  /** Change a one-off item's title and times { title, time, end }. Its tick is kept. */
+  function updateAgendaItem(state, date, id, item, today) {
+    var bad = agendaDateError(state, date, today);
+    if (bad) return bad;
+    var t = cleanAgendaItem(item);
+    if (t.error) return failure(state, t.error, t.message);
+    return editAgenda(state, date, function (e) {
+      var it = e.items.filter(function (x) { return x.id === id; })[0];
+      if (!it) return { error: 'unknown-item', message: 'That item is no longer in the plan.' };
+      it.title = t.title;
+      it.time = t.time;
+      it.end = t.end;
+      return {};
     });
   }
 
@@ -1995,6 +2019,7 @@
     agendaFor: agendaFor,
     addAgendaItem: addAgendaItem,
     removeAgendaItem: removeAgendaItem,
+    updateAgendaItem: updateAgendaItem,
     setAgendaSkip: setAgendaSkip,
     setAgendaDone: setAgendaDone,
     MAX_PLAN_TITLE: MAX_PLAN_TITLE,

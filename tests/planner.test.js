@@ -81,6 +81,26 @@ test('skipping a class only affects that day, and items can be removed', () => {
   assert.equal(core.removeAgendaItem(s, wed, 'p1', MON).error, 'unknown-item');
 });
 
+test('one-off items can be renamed and moved to another time, keeping their tick', () => {
+  let s = withPlanner(MON);
+  s = core.addAgendaItem(s, MON, { title: 'Dentist', time: '08:30' }, MON).state;
+  s = core.addAgendaItem(s, MON, { title: 'Lunch', time: '12:00' }, MON).state;
+  s = core.setAgendaDone(s, MON, 'p1', true, MON).state;
+  const r = core.updateAgendaItem(s, MON, 'p1', { title: ' Dentist  checkup ', time: '15:00', end: '16:00' }, MON);
+  assert.ok(r.ok, r.message);
+  s = r.state;
+  assert.deepEqual(s.agenda[MON].items[0], { id: 'p1', title: 'Dentist checkup', time: '15:00', end: '16:00' });
+  assert.deepEqual(s.agenda[MON].done, ['p1']);
+  assert.deepEqual(titles(core.agendaFor(s, MON)), ['Calculus', 'Lunch', 'Dentist checkup'], 'resorted by its new time');
+  s = core.updateAgendaItem(s, MON, 'p1', { title: 'Dentist checkup', time: null, end: null }, MON).state;
+  assert.equal(s.agenda[MON].items[0].time, null, 'times can be cleared');
+  assert.equal(core.updateAgendaItem(s, MON, 'p1', { title: 'X', time: '10:00', end: '09:00' }, MON).error, 'invalid-time');
+  assert.equal(core.updateAgendaItem(s, MON, 'p1', { title: '' }, MON).error, 'invalid-title');
+  assert.equal(core.updateAgendaItem(s, MON, 'p9', { title: 'X' }, MON).error, 'unknown-item');
+  assert.equal(core.updateAgendaItem(s, core.addDays(MON, -1), 'p1', { title: 'X' }, MON).error, 'past');
+  assert.deepEqual(core.validateState(s), []);
+});
+
 test('today’s plan can be ticked off; skipped and removed items lose their tick', () => {
   let s = withPlanner(MON);
   s = core.addAgendaItem(s, MON, { title: 'Groceries' }, MON).state;

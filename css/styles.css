@@ -4116,3 +4116,27 @@ button.cal-cell:hover {
     display: none;
   }
 }
+
+/* Editing a one-off plan item */
+.plan-edit-row.is-editing {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.plan-edit-row .plan-edit + .plan-remove {
+  margin-left: -4px;
+}
+
+@media (max-width: 559px) {
+  .plan-add.is-editing .plan-add-main {
+    flex-wrap: wrap;
+  }
+
+  .plan-add.is-editing .plan-add-main .input {
+    flex-basis: 100%;
+  }
+
+  .plan-add.is-editing #plan-add-submit {
+    margin-left: auto;
+  }
+}
