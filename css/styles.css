@@ -4081,7 +4081,7 @@ button.cal-cell:hover {
 /* Today's plan: a compact day calendar */
 .tg-today {
   --tg-n: 1;
-  --hour: 44px;
+  --hour: 28px;
   margin-top: 0;
   background: var(--surface-1);
 }
@@ -4098,6 +4098,31 @@ button.cal-cell:hover {
   cursor: default;
 }
 
+.tg-today .tg-event {
+  padding-top: 1px;
+  padding-bottom: 1px;
+  font-size: 11px;
+}
+
 .tg-today .tg-event-title {
-  font-size: var(--text-sm);
+  font-size: 12px;
+}
+
+.tg-today .tg-event.is-inline {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.tg-today .tg-event.is-inline .tg-event-title {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.tg-today .tg-event.is-inline .tg-event-time {
+  flex: 0 0 auto;
+}
+
+.tg-today .tg-allday-cell .tg-event {
+  min-height: 20px;
 }

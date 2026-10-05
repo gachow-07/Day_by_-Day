@@ -1326,7 +1326,7 @@
   }
 
   /** Today's plan near the top: shown once there's a day planner goal. */
-  var TODAY_HOUR_PX = 44;
+  var TODAY_HOUR_PX = 28;
 
   /**
    * Today's plan as a day calendar: only the hours that have something in
@@ -1379,7 +1379,13 @@
         var cols = el('div', 'tg-days tg-cols');
         var col = el('div', 'tg-col');
         timed.forEach(function (e) {
-          var b = planBlock(today, e.it, (e.end - e.start) < 45);
+          var tall = (e.end - e.start) / 60 * H >= 40;
+          var b = planBlock(today, e.it, !tall);
+          // Short blocks: name and time on one line.
+          if (!tall && e.lanes === 1) {
+            b.classList.add('is-inline');
+            b.appendChild(el('span', 'tg-event-time', timeRange(e.it)));
+          }
           b.style.top = ((e.start - first * 60) / 60 * H) + 'px';
           b.style.height = Math.max(18, (e.end - e.start) / 60 * H - 2) + 'px';
           b.style.left = 'calc(' + (e.lane / e.lanes * 100) + '% + 1px)';
