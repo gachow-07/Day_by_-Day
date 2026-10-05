@@ -41,7 +41,7 @@
   var MAX_PLAN_ITEMS = 30;       // regular schedule items on the day planner goal
   var MAX_DAY_ITEMS = 30;        // one-off plan items per day
   var MAX_PLAN_TITLE = 80;
-  var MAX_PLAN_AHEAD = 14;       // days ahead a plan can be made
+  var MAX_PLAN_AHEAD = 366;      // days ahead a plan can be made (about a year)
   var MAX_WORKOUT_LENGTH = 40;
   var MIN_GOAL_MINUTES = 5;
   /* Amount goals: time in minutes, or water in millilitres or US fluid ounces. */
@@ -515,7 +515,7 @@
   function agendaDateError(state, date, today) {
     if (!isValidDateKey(date)) return failure(state, 'invalid-date', 'Invalid date.');
     if (date < today) return failure(state, 'past', 'Past days can’t be planned.');
-    if (daysBetween(today, date) > MAX_PLAN_AHEAD) return failure(state, 'too-far', 'You can plan up to ' + MAX_PLAN_AHEAD + ' days ahead.');
+    if (daysBetween(today, date) > MAX_PLAN_AHEAD) return failure(state, 'too-far', 'You can plan up to a year ahead.');
     return null;
   }
 

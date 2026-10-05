@@ -3749,3 +3749,192 @@ button.cal-cell:hover {
 .plan-row-add {
   justify-self: start;
 }
+
+/* Plan calendar */
+.plan-dialog {
+  width: min(34rem, calc(100vw - 32px));
+}
+
+.plan-cal-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2) var(--s-3);
+  margin-top: var(--s-3);
+}
+
+.plan-cal-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.plan-cal-title {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.plan-week {
+  display: grid;
+  gap: 4px;
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plan-week-day {
+  display: grid;
+  grid-template-columns: 3.25rem minmax(0, 1fr);
+  align-items: start;
+  gap: var(--s-3);
+  width: 100%;
+  min-height: 44px;
+  padding: 6px var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-1);
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.plan-week-day:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.plan-week-day:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.plan-week-day.is-today .plan-week-dow,
+.plan-week-day.is-today .plan-week-num {
+  color: var(--accent);
+}
+
+.plan-week-day.is-selected,
+.plan-cell.is-selected {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.plan-week-day:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.plan-week-date {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.plan-week-dow {
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.plan-week-num {
+  font-family: var(--mono);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.plan-week-items {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.plan-week-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  min-width: 0;
+  font-size: var(--text-sm);
+}
+
+.plan-week-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-week-none,
+.plan-week-more {
+  font-size: var(--text-sm);
+  color: var(--text-3);
+}
+
+.plan-month {
+  margin-top: var(--s-3);
+}
+
+.plan-month-dow {
+  margin-bottom: 2px;
+}
+
+.plan-cell {
+  flex-direction: column;
+  justify-content: space-between;
+  height: 48px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text);
+  font-family: var(--mono);
+}
+
+.plan-cell:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.plan-cell.is-today {
+  box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--accent);
+}
+
+.plan-cell.is-selected {
+  outline: none;
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-1));
+}
+
+.plan-cell:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.plan-cell-count {
+  align-self: flex-end;
+  min-width: 18px;
+  padding: 0 4px;
+  border-radius: 2px;
+  background: var(--accent);
+  color: var(--surface-1);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
+.plan-day-title {
+  margin: var(--s-4) 0 0;
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--border);
+  font-weight: 600;
+  color: var(--text);
+}
