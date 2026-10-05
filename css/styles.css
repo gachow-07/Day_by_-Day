@@ -3519,60 +3519,6 @@ button.cal-cell:hover {
   margin-top: var(--s-6);
 }
 
-.plan-list {
-  display: grid;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--surface-1);
-}
-
-.plan-item + .plan-item {
-  border-top: 1px solid var(--border);
-}
-
-.plan-row {
-  position: relative;
-  display: grid;
-  grid-template-columns: auto minmax(5.5rem, auto) minmax(0, 1fr);
-  align-items: center;
-  gap: var(--s-3);
-  min-height: 48px;
-  padding: var(--s-2) var(--s-4);
-  cursor: pointer;
-}
-
-.plan-check {
-  position: absolute;
-  opacity: 0;
-  width: 1px;
-  height: 1px;
-}
-
-.plan-box {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border: 1px solid var(--border-strong);
-  border-radius: 3px;
-  color: transparent;
-}
-
-.plan-check:checked + .plan-box {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--surface-1);
-}
-
-.plan-check:focus-visible + .plan-box {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
-
 .plan-time {
   font-family: var(--mono);
   font-size: var(--text-xs);
@@ -3592,15 +3538,6 @@ button.cal-cell:hover {
   min-width: 0;
   overflow-wrap: anywhere;
   color: var(--text);
-}
-
-.plan-item.is-done .plan-title {
-  color: var(--text-3);
-  text-decoration: line-through;
-}
-
-.plan-item.is-done .plan-time {
-  color: var(--text-3);
 }
 
 .plan-empty {
@@ -4139,4 +4076,28 @@ button.cal-cell:hover {
   .plan-add.is-editing #plan-add-submit {
     margin-left: auto;
   }
+}
+
+/* Today's plan: a compact day calendar */
+.tg-today {
+  --tg-n: 1;
+  --hour: 44px;
+  margin-top: 0;
+  background: var(--surface-1);
+}
+
+.tg-today .tg-body {
+  margin-top: 8px;
+}
+
+.tg-today .tg-hour.is-first {
+  transform: translateY(-40%);
+}
+
+.tg-today .tg-col {
+  cursor: default;
+}
+
+.tg-today .tg-event-title {
+  font-size: var(--text-sm);
 }
