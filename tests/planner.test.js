@@ -52,11 +52,12 @@ test('each day’s plan has that weekday’s regular items, sorted by time', () 
   assert.deepEqual(core.validateState(s), []);
 });
 
-test('plans can be made for today and the days ahead, not the past', () => {
+test('plans can be made for today and up to a year ahead, not the past', () => {
   const s = withPlanner(TUE);
+  assert.ok(core.addAgendaItem(s, core.addDays(TUE, 366), { title: 'Next year' }, TUE).ok);
   assert.ok(core.addAgendaItem(s, TUE, { title: 'Today thing' }, TUE).ok);
   assert.equal(core.addAgendaItem(s, MON, { title: 'Too late' }, TUE).error, 'past');
-  assert.equal(core.addAgendaItem(s, core.addDays(TUE, 15), { title: 'Far' }, TUE).error, 'too-far');
+  assert.equal(core.addAgendaItem(s, core.addDays(TUE, 367), { title: 'Far' }, TUE).error, 'too-far');
   assert.equal(core.addAgendaItem(s, TUE, { title: '  ' }, TUE).error, 'invalid-title');
   assert.equal(core.addAgendaItem(s, TUE, { title: 'x'.repeat(81) }, TUE).error, 'invalid-title');
   assert.equal(core.addAgendaItem(s, TUE, { title: 'Bad', time: '25:00' }, TUE).error, 'invalid-time');

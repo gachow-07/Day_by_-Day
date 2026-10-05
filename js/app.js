@@ -1008,7 +1008,7 @@
     checkForNewDay();
     if (holdForAccount()) return;
     var now = Date.now();
-    if (act === 'plan') { openPlanDialog(core.addDays(today, 1)); return; }
+    if (act === 'plan') { openPlanDialog(core.addDays(today, 1), 'plan'); return; }
     if (act === 'start' || act === 'focus') { startTiming(id, act === 'focus' ? 'focus' : 'free'); return; }
     if (act === 'pause' || act === 'resume') {
       var r = act === 'pause' ? core.pauseTimer(state, now) : core.resumeTimer(state, now);
@@ -1377,11 +1377,16 @@
   }
 
   var planDate = null; // the day open in the plan dialog
+  var planMode = null; // 'plan' (from the goal: checks it off) or 'edit'
+  var planView = 'week';
+  var planAnchor = null; // first day of the week shown, or the 1st of the month shown
 
-  function openPlanDialog(date) {
+  function openPlanDialog(date, mode) {
     checkForNewDay();
     if (!core.plannerHabit(state)) return;
     planDate = date;
+    planMode = mode || 'edit';
+    planAnchor = null;
     $('plan-error').hidden = true;
     $('plan-add-title').value = '';
     $('plan-add-time').value = '';
@@ -1414,7 +1419,8 @@
     var tomorrow = core.addDays(today, 1);
     $('plan-dialog-title').textContent = planDate === today ? 'Today’s plan' : planDate === tomorrow ? 'Plan tomorrow' : 'Plan ' + formatDate(planDate, 'dowLong');
     $('plan-dialog-date').textContent = formatDate(planDate, 'long');
-    $('plan-done').textContent = planDate === tomorrow ? 'Done planning' : 'Done';
+    $('plan-done').textContent = planMode === 'plan' ? 'Done planning' : 'Done';
+    renderPlanCalendar();
     var items = core.agendaFor(state, planDate);
     var regular = items.filter(function (it) { return it.regular; });
     var extra = items.filter(function (it) { return !it.regular; });
@@ -1435,6 +1441,140 @@
     ex.textContent = '';
     extra.forEach(function (it) { ex.appendChild(planRow(it, '', 'Remove ' + it.title, 'remove')); });
     ex.hidden = !extra.length;
+  }
+
+  /* Plan calendar: a week list or a month grid; pick a day to plan it. */
+
+  function monthStart(date) {
+    return date.slice(0, 8) + '01';
+  }
+
+  function planAnchorFor(date) {
+    return planView === 'week' ? core.weekBounds(state, date).start : monthStart(date);
+  }
+
+  function lastPlanDay() {
+    return core.addDays(today, core.MAX_PLAN_AHEAD);
+  }
+
+  function plannable(date) {
+    return date >= today && date <= lastPlanDay();
+  }
+
+  function shiftAnchor(anchor, dir) {
+    if (planView === 'week') return core.addDays(anchor, 7 * dir);
+    var y = Number(anchor.slice(0, 4));
+    var m = Number(anchor.slice(5, 7)) - 1 + dir;
+    y += Math.floor(m / 12);
+    m = ((m % 12) + 12) % 12;
+    return String(y).padStart(4, '0') + '-' + String(m + 1).padStart(2, '0') + '-01';
+  }
+
+  function plannedItems(date) {
+    return core.agendaFor(state, date).filter(function (it) { return !it.skipped; });
+  }
+
+  function planDayLabel(date, count) {
+    return formatDate(date, 'long') + (date === today ? ', today' : '') + ': ' +
+      (count ? plural(count, 'thing') + ' planned' : 'nothing planned');
+  }
+
+  function planDayButton(className, date) {
+    var b = el('button', className);
+    b.type = 'button';
+    b.dataset.planDate = date;
+    b.disabled = !plannable(date);
+    if (date === planDate) { b.classList.add('is-selected'); b.setAttribute('aria-pressed', 'true'); }
+    else b.setAttribute('aria-pressed', 'false');
+    if (date === today) { b.classList.add('is-today'); b.setAttribute('aria-current', 'date'); }
+    if (date < today) b.classList.add('is-past');
+    return b;
+  }
+
+  function renderPlanCalendar() {
+    if (!planAnchor) planAnchor = planAnchorFor(planDate);
+    var week = planView === 'week';
+    $('plan-week').hidden = !week;
+    $('plan-month').hidden = week;
+    var start = planAnchor;
+    var end = week ? core.addDays(start, 6) : core.addDays(shiftAnchor(start, 1), -1);
+    $('plan-cal-title').textContent = week
+      ? formatDate(start, 'short') + ' – ' + formatDate(end, 'short')
+      : formatMonth(Number(start.slice(0, 4)), Number(start.slice(5, 7)));
+    var unit = week ? 'week' : 'month';
+    $('plan-cal-prev').disabled = start <= today;
+    $('plan-cal-next').disabled = end >= lastPlanDay();
+    $('plan-cal-prev').setAttribute('aria-label', 'Previous ' + unit);
+    $('plan-cal-next').setAttribute('aria-label', 'Next ' + unit);
+    if (week) {
+      var list = $('plan-week');
+      list.textContent = '';
+      for (var i = 0; i < 7; i++) {
+        var d = core.addDays(start, i);
+        var items = plannedItems(d);
+        var li = el('li');
+        var b = planDayButton('plan-week-day', d);
+        b.setAttribute('aria-label', planDayLabel(d, items.length));
+        var when = el('span', 'plan-week-date');
+        when.appendChild(el('span', 'plan-week-dow', formatDate(d, 'dowShort')));
+        when.appendChild(el('span', 'plan-week-num', String(Number(d.slice(8)))));
+        b.appendChild(when);
+        var sum = el('span', 'plan-week-items');
+        if (!items.length) sum.appendChild(el('span', 'plan-week-none', d < today ? '' : 'Nothing yet'));
+        items.slice(0, 3).forEach(function (it) {
+          var row = el('span', 'plan-week-item');
+          if (it.time) row.appendChild(el('span', 'plan-time', formatTime(it.time)));
+          row.appendChild(el('span', 'plan-week-title', it.title));
+          sum.appendChild(row);
+        });
+        if (items.length > 3) sum.appendChild(el('span', 'plan-week-more', '+' + (items.length - 3) + ' more'));
+        b.appendChild(sum);
+        li.appendChild(b);
+        list.appendChild(li);
+      }
+    } else {
+      var dow = $('plan-month-dow');
+      dow.textContent = '';
+      var ws = weekStart();
+      for (var k = 0; k < 7; k++) dow.appendChild(el('span', 'cal-dow', dayShort((ws + k) % 7).slice(0, 2)));
+      var grid = $('plan-month-grid');
+      grid.textContent = '';
+      var lead = (core.dayOfWeek(start) - ws + 7) % 7;
+      for (var j = 0; j < lead; j++) grid.appendChild(el('span', 'cal-cell is-outside'));
+      for (var day = start; day <= end; day = core.addDays(day, 1)) {
+        var n = plannedItems(day).length;
+        var cell = planDayButton('cal-cell plan-cell', day);
+        cell.setAttribute('aria-label', planDayLabel(day, n));
+        cell.appendChild(el('span', 'plan-cell-num', String(Number(day.slice(8)))));
+        if (n && day >= today) cell.appendChild(el('span', 'plan-cell-count', String(n)));
+        grid.appendChild(cell);
+      }
+    }
+  }
+
+  function onPlanCalendarClick(event) {
+    var nav = event.target.closest('#plan-cal-prev, #plan-cal-next');
+    if (nav) {
+      if (nav.disabled) return;
+      planAnchor = shiftAnchor(planAnchor, nav.id === 'plan-cal-next' ? 1 : -1);
+      renderPlanCalendar();
+      if (nav.disabled) (nav.id === 'plan-cal-next' ? $('plan-cal-prev') : $('plan-cal-next')).focus();
+      return;
+    }
+    var day = event.target.closest('[data-plan-date]');
+    if (!day || day.disabled) return;
+    planDate = day.dataset.planDate;
+    planError('');
+    renderPlanDialog();
+    var again = $('plan-dialog').querySelector('[data-plan-date="' + planDate + '"]');
+    if (again) again.focus();
+  }
+
+  function onPlanView(event) {
+    if (event.target.name !== 'plan-view') return;
+    planView = event.target.value;
+    planAnchor = planAnchorFor(planDate);
+    renderPlanCalendar();
   }
 
   function planError(message) {
@@ -1487,10 +1627,10 @@
   function onPlanDone() {
     checkForNewDay();
     var planner = core.plannerHabit(state);
-    var date = planDate;
+    var mode = planMode;
     closeDialog('plan-dialog');
-    if (!planner || date !== core.addDays(today, 1)) return;
-    var count = core.agendaFor(state, date).filter(function (it) { return !it.skipped; }).length;
+    if (!planner || mode !== 'plan') return;
+    var count = plannedItems(core.addDays(today, 1)).length;
     var entry = todayEntry(planner.id);
     var rec = todayRecord();
     if (entry && rec && rec.done.indexOf(planner.id) < 0 && !holdForAccount()) {
@@ -3523,13 +3663,15 @@
     $('gf-planner-wrap').addEventListener('click', onPlannerRowsClick);
     $('plan-add-form').addEventListener('submit', onPlanAdd);
     $('plan-dialog').addEventListener('click', onPlanDialogClick);
+    $('plan-dialog').addEventListener('click', onPlanCalendarClick);
+    $('plan-dialog').addEventListener('change', onPlanView);
     $('plan-done').addEventListener('click', onPlanDone);
     $('plan-schedule').addEventListener('click', function () {
       var p = core.plannerHabit(state);
       closeDialog('plan-dialog');
       if (p) openGoalForm(p.id);
     });
-    $('plan-dialog').addEventListener('close', function () { planDate = null; planError(''); restoreFocus('plan-dialog', $('goal-list')); });
+    $('plan-dialog').addEventListener('close', function () { planDate = null; planMode = null; planError(''); restoreFocus('plan-dialog', $('goal-list')); });
     $('gf-week-plan').addEventListener('input', function () {
       if (!readWeekPlan().some(Boolean)) return;
       $('gf-split-error').hidden = true;

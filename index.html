@@ -10,8 +10,8 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="preload" href="fonts/instrument-sans-latin-var.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="fonts/jetbrains-mono-latin-var.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/styles.css?v=23">
-  <script src="js/theme.js?v=23"></script>
+  <link rel="stylesheet" href="css/styles.css?v=24">
+  <script src="js/theme.js?v=24"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -600,7 +600,25 @@
 
   <dialog id="plan-dialog" class="dialog plan-dialog" aria-labelledby="plan-dialog-title" aria-describedby="plan-dialog-date">
     <h2 id="plan-dialog-title" class="dialog-title">Plan tomorrow</h2>
-    <p id="plan-dialog-date" class="dialog-message"></p>
+    <div class="plan-cal-bar">
+      <fieldset class="segmented plan-view" aria-label="Calendar view">
+        <label><input type="radio" name="plan-view" value="week" checked><span>Week</span></label>
+        <label><input type="radio" name="plan-view" value="month"><span>Month</span></label>
+      </fieldset>
+      <div class="plan-cal-head">
+        <p id="plan-cal-title" class="plan-cal-title" aria-live="polite"></p>
+        <div class="cal-nav">
+          <button type="button" id="plan-cal-prev" class="icon-btn" data-tip="Previous"><span data-icon="chevron-left"></span></button>
+          <button type="button" id="plan-cal-next" class="icon-btn" data-tip="Next"><span data-icon="chevron-right"></span></button>
+        </div>
+      </div>
+    </div>
+    <ol id="plan-week" class="plan-week" aria-label="Days this week"></ol>
+    <div id="plan-month" class="plan-month" hidden>
+      <div class="cal-grid plan-month-dow" aria-hidden="true" id="plan-month-dow"></div>
+      <div class="cal-grid" id="plan-month-grid" role="group" aria-labelledby="plan-cal-title"></div>
+    </div>
+    <p id="plan-dialog-date" class="plan-day-title"></p>
     <h3 class="plan-dialog-head" id="plan-regular-title">Regular schedule</h3>
     <ul id="plan-regular" class="plan-edit-list" aria-labelledby="plan-regular-title"></ul>
     <p id="plan-regular-empty" class="field-hint" hidden></p>
@@ -646,14 +664,14 @@
     </form>
   </dialog>
 
-  <script src="js/icons.js?v=23"></script>
-  <script src="js/core.js?v=23"></script>
-  <script src="js/stats.js?v=23"></script>
-  <script src="js/plans.js?v=23"></script>
-  <script src="js/storage.js?v=23"></script>
-  <script src="js/sync.js?v=23"></script>
-  <script src="js/firebase-config.js?v=23"></script>
-  <script src="js/cloud.js?v=23"></script>
-  <script src="js/app.js?v=23"></script>
+  <script src="js/icons.js?v=24"></script>
+  <script src="js/core.js?v=24"></script>
+  <script src="js/stats.js?v=24"></script>
+  <script src="js/plans.js?v=24"></script>
+  <script src="js/storage.js?v=24"></script>
+  <script src="js/sync.js?v=24"></script>
+  <script src="js/firebase-config.js?v=24"></script>
+  <script src="js/cloud.js?v=24"></script>
+  <script src="js/app.js?v=24"></script>
 </body>
 </html>
