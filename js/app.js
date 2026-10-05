@@ -1326,54 +1326,95 @@
   }
 
   /** Today's plan near the top: shown once there's a day planner goal. */
+  var TODAY_HOUR_PX = 44;
+
+  /**
+   * Today's plan as a day calendar: only the hours that have something in
+   * them, each item a block from its start to its end time, untimed items
+   * in an "All day" row, and a red line at the current time. Tap a block
+   * to open it in the planner.
+   */
   function renderDayPlan() {
     var planner = core.plannerHabit(state);
     $('plan-card').hidden = !planner;
     if (!planner) return;
     var items = core.agendaFor(state, today).filter(function (it) { return !it.skipped; });
-    var sig = JSON.stringify(items);
-    var list = $('plan-list');
-    if (list.dataset.sig !== sig) {
-      var focusedId = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.planId : null;
-      list.textContent = '';
-      items.forEach(function (it) {
-        var li = el('li', 'plan-item' + (it.done ? ' is-done' : ''));
-        var label = el('label', 'plan-row');
-        var box = el('input', 'plan-check');
-        box.type = 'checkbox';
-        box.checked = it.done;
-        box.dataset.planId = it.id;
-        label.appendChild(box);
-        var mark = el('span', 'plan-box');
-        mark.setAttribute('aria-hidden', 'true');
-        mark.appendChild(icon('check', 14));
-        label.appendChild(mark);
-        label.appendChild(el('span', 'plan-time' + (it.time ? '' : ' is-anytime'), it.time ? timeRange(it) : 'Anytime'));
-        label.appendChild(el('span', 'plan-title', it.title));
-        li.appendChild(label);
-        list.appendChild(li);
-      });
-      list.dataset.sig = sig;
-      if (focusedId) {
-        var again = list.querySelector('[data-plan-id="' + focusedId + '"]');
+    var now = new Date();
+    var nowMin = now.getHours() * 60 + now.getMinutes();
+    var box = $('plan-list');
+    var sig = JSON.stringify(items) + Math.floor(nowMin / 5);
+    if (box.dataset.sig !== sig) {
+      var focused = document.activeElement && box.contains(document.activeElement) ? document.activeElement.dataset.planItem : null;
+      box.textContent = '';
+      var untimed = items.filter(function (it) { return !it.time; });
+      var timed = layoutBlocks(items.filter(function (it) { return it.time; }));
+      box.classList.toggle('has-allday', !!untimed.length);
+      if (untimed.length) {
+        var row = el('div', 'tg-row tg-allday');
+        row.appendChild(el('div', 'tg-gutter tg-allday-label', 'All day'));
+        var days = el('div', 'tg-days');
+        var cell = el('div', 'tg-allday-cell');
+        untimed.forEach(function (it) { cell.appendChild(planBlock(today, it, true)); });
+        days.appendChild(cell);
+        row.appendChild(days);
+        box.appendChild(row);
+      }
+      if (timed.length) {
+        // Whole hours from the first start to the last end (at least three).
+        var first = Math.floor(Math.min.apply(null, timed.map(function (e) { return e.start; })) / 60);
+        var last = Math.ceil(Math.max.apply(null, timed.map(function (e) { return e.end; })) / 60);
+        if (last - first < 3) last = Math.min(24, first + 3);
+        if (last - first < 3) first = Math.max(0, last - 3);
+        var H = TODAY_HOUR_PX;
+        var body = el('div', 'tg-body');
+        body.style.height = ((last - first) * H) + 'px';
+        var hours = el('div', 'tg-hours');
+        hours.setAttribute('aria-hidden', 'true');
+        for (var h = first; h < last; h++) {
+          var lab = el('span', 'tg-hour' + (h === first ? ' is-first' : ''), hourLabel(h % 24));
+          lab.style.top = ((h - first) * H) + 'px';
+          hours.appendChild(lab);
+        }
+        body.appendChild(hours);
+        var cols = el('div', 'tg-days tg-cols');
+        var col = el('div', 'tg-col');
+        timed.forEach(function (e) {
+          var b = planBlock(today, e.it, (e.end - e.start) < 45);
+          b.style.top = ((e.start - first * 60) / 60 * H) + 'px';
+          b.style.height = Math.max(18, (e.end - e.start) / 60 * H - 2) + 'px';
+          b.style.left = 'calc(' + (e.lane / e.lanes * 100) + '% + 1px)';
+          b.style.width = 'calc(' + (100 / e.lanes) + '% - 3px)';
+          col.appendChild(b);
+        });
+        if (nowMin >= first * 60 && nowMin <= last * 60) {
+          var line = el('div', 'tg-now');
+          line.setAttribute('aria-hidden', 'true');
+          line.style.top = ((nowMin - first * 60) / 60 * H) + 'px';
+          col.appendChild(line);
+        }
+        cols.appendChild(col);
+        body.appendChild(cols);
+        box.appendChild(body);
+      }
+      box.dataset.sig = sig;
+      if (focused) {
+        var again = box.querySelector('[data-plan-item="' + focused + '"]');
         if (again) again.focus();
       }
     }
-    list.hidden = !items.length;
+    box.hidden = !items.length;
     var tomorrowCount = core.agendaFor(state, core.addDays(today, 1)).filter(function (it) { return !it.skipped; }).length;
     $('plan-empty').hidden = !!items.length;
     $('plan-empty').textContent = 'Nothing planned for today.' +
       (tomorrowCount ? '' : ' Tap Plan on “' + planner.name + '” to plan tomorrow.');
   }
 
-  function onPlanTick(event) {
-    var box = event.target.closest('.plan-check');
-    if (!box) return;
-    checkForNewDay();
-    if (holdForAccount()) { renderDayPlan(); return; }
-    var r = core.setAgendaDone(state, today, box.dataset.planId, box.checked, today);
-    if (!r.ok) { announce(r.message); $('plan-list').dataset.sig = ''; renderDayPlan(); return; }
-    commit(r.state);
+  /** A block in today's plan: open the planner on today (editing it if it's a one-off item). */
+  function onTodayPlanClick(event) {
+    var b = event.target.closest('[data-plan-item]');
+    if (!b) return;
+    openPlanDialog(today);
+    if (b.classList.contains('is-extra')) startPlanEdit(b.dataset.planItem);
   }
 
   var planDate = null; // the day open in the plan dialog
@@ -3820,7 +3861,8 @@
     $('goals-card').addEventListener('change', onGoalChange);
     $('first-goal-form').addEventListener('submit', onFirstGoal);
     $('plan-edit-today').addEventListener('click', function () { openPlanDialog(today); });
-    $('plan-list').addEventListener('change', onPlanTick);
+    $('plan-list').addEventListener('click', onTodayPlanClick);
+    setInterval(function () { if (!document.hidden && activeTab === 'today') renderDayPlan(); }, 60000);
     $('edit-goals').addEventListener('click', openManage);
     $('add-goal').addEventListener('click', function () { openGoalForm(null); });
 
