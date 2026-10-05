@@ -1379,6 +1379,7 @@
   var planDate = null; // the day open in the plan dialog
   var planMode = null; // 'plan' (from the goal: checks it off) or 'edit'
   var planView = 'week';
+  var planEditing = null; // id of the one-off item loaded into the form for editing
   var planAnchor = null; // first day of the week shown, or the 1st of the month shown
 
   function openPlanDialog(date, mode) {
@@ -1391,9 +1392,7 @@
     var viewInput = document.querySelector('input[name="plan-view"][value="' + planView + '"]');
     if (viewInput) viewInput.checked = true;
     $('plan-error').hidden = true;
-    $('plan-add-title').value = '';
-    $('plan-add-time').value = '';
-    $('plan-add-end').value = '';
+    stopPlanEdit();
     renderPlanDialog();
     // Start on the chosen day in the calendar (not the text box, which would
     // scroll the calendar away and open the keyboard on phones).
@@ -1413,6 +1412,17 @@
     text.appendChild(title);
     if (it.skipped) text.appendChild(el('span', 'plan-skipped', 'Skipped'));
     li.appendChild(text);
+    if (act === 'remove') {
+      if (it.id === planEditing) li.classList.add('is-editing');
+      var edit = el('button', 'icon-btn plan-edit');
+      edit.type = 'button';
+      edit.dataset.planAct = 'edit';
+      edit.dataset.planId = it.id;
+      edit.setAttribute('aria-label', 'Edit ' + it.title);
+      edit.dataset.tip = 'Edit';
+      edit.appendChild(icon('pencil', 16));
+      li.appendChild(edit);
+    }
     var b = el('button', act === 'remove' ? 'icon-btn plan-remove' : 'btn btn-ghost btn-sm plan-skip');
     b.type = 'button';
     b.dataset.planAct = act;
@@ -1666,6 +1676,7 @@
   }
 
   function selectPlanDay(date, focusSel) {
+    if (date !== planDate) stopPlanEdit();
     planDate = date;
     planError('');
     renderPlanDialog();
@@ -1678,7 +1689,7 @@
     if (nav) {
       if (nav.disabled) return;
       planAnchor = shiftAnchor(planAnchor, nav.id === 'plan-cal-next' ? 1 : -1);
-      if (planView === 'day') planDate = planAnchor;
+      if (planView === 'day' && planAnchor !== planDate) { stopPlanEdit(); planDate = planAnchor; }
       planError('');
       renderPlanDialog();
       if (nav.disabled) (nav.id === 'plan-cal-next' ? $('plan-cal-prev') : $('plan-cal-next')).focus();
@@ -1687,6 +1698,12 @@
     var day = event.target.closest('[data-plan-date]');
     if (day) {
       if (day.disabled) return;
+      if (day.dataset.planItem && day.classList.contains('is-extra')) {
+        // A one-off item's block: open it for editing.
+        selectPlanDay(day.dataset.planDate, null);
+        startPlanEdit(day.dataset.planItem);
+        return;
+      }
       var sel = day.dataset.planItem
         ? '[data-plan-date="' + day.dataset.planDate + '"][data-plan-item="' + day.dataset.planItem + '"]'
         : '.tg-day[data-plan-date="' + day.dataset.planDate + '"], .plan-cell[data-plan-date="' + day.dataset.planDate + '"]';
@@ -1698,9 +1715,14 @@
     if (!col || !plannable(col.dataset.slotDate)) return;
     var y = event.clientY - col.getBoundingClientRect().top;
     var startMin = Math.max(0, Math.min(23 * 60 + 30, Math.floor(y / HOUR_PX * 2) * 30));
+    // While editing an item, keep its length when moving it.
+    var length = 60;
+    if (planEditing && $('plan-add-time').value && $('plan-add-end').value) {
+      length = minutesOf($('plan-add-end').value) - minutesOf($('plan-add-time').value);
+    }
     selectPlanDay(col.dataset.slotDate, null);
     $('plan-add-time').value = hhmm(startMin);
-    $('plan-add-end').value = startMin + 60 < 24 * 60 ? hhmm(startMin + 60) : '';
+    $('plan-add-end').value = startMin + length < 24 * 60 ? hhmm(startMin + length) : '';
     $('plan-add-title').focus();
   }
 
@@ -1721,7 +1743,10 @@
     checkForNewDay();
     if (holdForAccount()) return;
     var item = { title: $('plan-add-title').value, time: $('plan-add-time').value || null, end: $('plan-add-end').value || null };
-    var r = core.addAgendaItem(state, planDate, item, today);
+    var editing = planEditing;
+    var r = editing
+      ? core.updateAgendaItem(state, planDate, editing, item, today)
+      : core.addAgendaItem(state, planDate, item, today);
     if (!r.ok) {
       planError(r.message);
       (r.error === 'invalid-time' ? $('plan-add-time') : $('plan-add-title')).focus();
@@ -1729,12 +1754,41 @@
     }
     if (!commit(r.state)) return;
     planError('');
+    stopPlanEdit();
+    renderPlanDialog();
+    announce((editing ? 'Saved ' : 'Added ') + core.cleanName(item.title) + '.');
+    var row = editing && $('plan-dialog').querySelector('.plan-edit[data-plan-id="' + editing + '"]');
+    (row || $('plan-add-title')).focus();
+  }
+
+  /** Load a one-off item into the add form to change its name or times. */
+  function startPlanEdit(id) {
+    var it = core.agendaFor(state, planDate).filter(function (x) { return x.id === id && !x.regular; })[0];
+    if (!it) return;
+    planEditing = id;
+    $('plan-add-title').value = it.title;
+    $('plan-add-time').value = it.time || '';
+    $('plan-add-end').value = it.end || '';
+    $('plan-add-submit').textContent = 'Save';
+    $('plan-add-cancel').hidden = false;
+    $('plan-add-form').classList.add('is-editing');
+    $('plan-add-title').setAttribute('aria-label', 'Editing ' + it.title);
+    planError('');
+    renderPlanDialog();
+    $('plan-add-title').focus();
+    $('plan-add-title').select();
+  }
+
+  /** Back to adding: clear the form. */
+  function stopPlanEdit() {
+    planEditing = null;
     $('plan-add-title').value = '';
     $('plan-add-time').value = '';
     $('plan-add-end').value = '';
-    renderPlanDialog();
-    announce('Added ' + core.cleanName(item.title) + '.');
-    $('plan-add-title').focus();
+    $('plan-add-submit').textContent = 'Add';
+    $('plan-add-cancel').hidden = true;
+    $('plan-add-form').classList.remove('is-editing');
+    $('plan-add-title').removeAttribute('aria-label');
   }
 
   function onPlanDialogClick(event) {
@@ -1744,6 +1798,7 @@
     if (holdForAccount()) return;
     var act = b.dataset.planAct;
     var id = b.dataset.planId;
+    if (act === 'edit') { startPlanEdit(id); return; }
     var it = core.agendaFor(state, planDate).filter(function (x) { return x.id === id; })[0];
     var r = act === 'remove'
       ? core.removeAgendaItem(state, planDate, id, today)
@@ -1751,6 +1806,7 @@
     if (!r.ok) { planError(r.message); return; }
     if (!commit(r.state)) return;
     planError('');
+    if (act === 'remove' && id === planEditing) stopPlanEdit();
     renderPlanDialog();
     if (it) announce(act === 'remove' ? 'Removed ' + it.title + '.' : act === 'skip' ? 'Skipping ' + it.title + ' that day.' : it.title + ' is back on.');
     var again = $('plan-dialog').querySelector('[data-plan-id="' + id + '"]');
@@ -3805,7 +3861,13 @@
       closeDialog('plan-dialog');
       if (p) openGoalForm(p.id);
     });
-    $('plan-dialog').addEventListener('close', function () { planDate = null; planMode = null; planError(''); restoreFocus('plan-dialog', $('goal-list')); });
+    $('plan-add-cancel').addEventListener('click', function () {
+      stopPlanEdit();
+      planError('');
+      renderPlanDialog();
+      $('plan-add-title').focus();
+    });
+    $('plan-dialog').addEventListener('close', function () { stopPlanEdit(); planDate = null; planMode = null; planError(''); restoreFocus('plan-dialog', $('goal-list')); });
     $('gf-week-plan').addEventListener('input', function () {
       if (!readWeekPlan().some(Boolean)) return;
       $('gf-split-error').hidden = true;
