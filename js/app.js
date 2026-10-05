@@ -1387,12 +1387,22 @@
     planDate = date;
     planMode = mode || 'edit';
     planAnchor = null;
+    planScrollKey = null;
+    var viewInput = document.querySelector('input[name="plan-view"][value="' + planView + '"]');
+    if (viewInput) viewInput.checked = true;
     $('plan-error').hidden = true;
     $('plan-add-title').value = '';
     $('plan-add-time').value = '';
     $('plan-add-end').value = '';
     renderPlanDialog();
-    openDialog('plan-dialog', $('plan-add-title'));
+    // Start on the chosen day in the calendar (not the text box, which would
+    // scroll the calendar away and open the keyboard on phones).
+    openDialog('plan-dialog', $('plan-dialog').querySelector('[data-plan-date].is-selected') || $('plan-add-title'));
+    // Scrolling only works once the dialog is showing.
+    planScrollKey = null;
+    renderPlanCalendar();
+    var selected = $('plan-dialog').querySelector('[data-plan-date].is-selected');
+    if (selected) selected.focus();
   }
 
   function planRow(it, actionText, actionLabel, act) {
@@ -1443,13 +1453,21 @@
     ex.hidden = !extra.length;
   }
 
-  /* Plan calendar: a week list or a month grid; pick a day to plan it. */
+  /*
+   * Plan calendar, laid out like a desk calendar app: Day and Week show a
+   * time grid with each item as a block from its start to its end time
+   * (untimed items in an "All day" row); Month shows a grid with a count per
+   * day. Pick a day to plan it below, or click an empty slot to add there.
+   */
+  var HOUR_PX = 48;
+  var planScrollKey = null;
 
   function monthStart(date) {
     return date.slice(0, 8) + '01';
   }
 
   function planAnchorFor(date) {
+    if (planView === 'day') return date;
     return planView === 'week' ? core.weekBounds(state, date).start : monthStart(date);
   }
 
@@ -1462,6 +1480,7 @@
   }
 
   function shiftAnchor(anchor, dir) {
+    if (planView === 'day') return core.addDays(anchor, dir);
     if (planView === 'week') return core.addDays(anchor, 7 * dir);
     var y = Number(anchor.slice(0, 4));
     var m = Number(anchor.slice(5, 7)) - 1 + dir;
@@ -1491,65 +1510,167 @@
     return b;
   }
 
-  function renderPlanCalendar() {
-    if (!planAnchor) planAnchor = planAnchorFor(planDate);
-    var week = planView === 'week';
-    $('plan-week').hidden = !week;
-    $('plan-month').hidden = week;
-    var start = planAnchor;
-    var end = week ? core.addDays(start, 6) : core.addDays(shiftAnchor(start, 1), -1);
-    $('plan-cal-title').textContent = week
-      ? formatDate(start, 'short') + ' – ' + formatDate(end, 'short')
-      : formatMonth(Number(start.slice(0, 4)), Number(start.slice(5, 7)));
-    var unit = week ? 'week' : 'month';
-    $('plan-cal-prev').disabled = start <= today;
-    $('plan-cal-next').disabled = end >= lastPlanDay();
-    $('plan-cal-prev').setAttribute('aria-label', 'Previous ' + unit);
-    $('plan-cal-next').setAttribute('aria-label', 'Next ' + unit);
-    if (week) {
-      var list = $('plan-week');
-      list.textContent = '';
-      for (var i = 0; i < 7; i++) {
-        var d = core.addDays(start, i);
-        var items = plannedItems(d);
-        var li = el('li');
-        var b = planDayButton('plan-week-day', d);
-        b.setAttribute('aria-label', planDayLabel(d, items.length));
-        var when = el('span', 'plan-week-date');
-        when.appendChild(el('span', 'plan-week-dow', formatDate(d, 'dowShort')));
-        when.appendChild(el('span', 'plan-week-num', String(Number(d.slice(8)))));
-        b.appendChild(when);
-        var sum = el('span', 'plan-week-items');
-        if (!items.length) sum.appendChild(el('span', 'plan-week-none', d < today ? '' : 'Nothing yet'));
-        items.slice(0, 3).forEach(function (it) {
-          var row = el('span', 'plan-week-item');
-          if (it.time) row.appendChild(el('span', 'plan-time', formatTime(it.time)));
-          row.appendChild(el('span', 'plan-week-title', it.title));
-          sum.appendChild(row);
-        });
-        if (items.length > 3) sum.appendChild(el('span', 'plan-week-more', '+' + (items.length - 3) + ' more'));
-        b.appendChild(sum);
-        li.appendChild(b);
-        list.appendChild(li);
-      }
-    } else {
-      var dow = $('plan-month-dow');
-      dow.textContent = '';
-      var ws = weekStart();
-      for (var k = 0; k < 7; k++) dow.appendChild(el('span', 'cal-dow', dayShort((ws + k) % 7).slice(0, 2)));
-      var grid = $('plan-month-grid');
-      grid.textContent = '';
-      var lead = (core.dayOfWeek(start) - ws + 7) % 7;
-      for (var j = 0; j < lead; j++) grid.appendChild(el('span', 'cal-cell is-outside'));
-      for (var day = start; day <= end; day = core.addDays(day, 1)) {
-        var n = plannedItems(day).length;
-        var cell = planDayButton('cal-cell plan-cell', day);
-        cell.setAttribute('aria-label', planDayLabel(day, n));
-        cell.appendChild(el('span', 'plan-cell-num', String(Number(day.slice(8)))));
-        if (n && day >= today) cell.appendChild(el('span', 'plan-cell-count', String(n)));
-        grid.appendChild(cell);
+  function minutesOf(hhmm) {
+    var p = hhmm.split(':');
+    return Number(p[0]) * 60 + Number(p[1]);
+  }
+
+  function hhmm(minutes) {
+    return String(Math.floor(minutes / 60)).padStart(2, '0') + ':' + String(minutes % 60).padStart(2, '0');
+  }
+
+  function hourLabel(h) {
+    return new Date(2000, 0, 1, h).toLocaleTimeString(undefined, { hour: 'numeric' });
+  }
+
+  /** Lay out a day's timed items side by side where they overlap. */
+  function layoutBlocks(items) {
+    var evs = items.map(function (it) {
+      var start = minutesOf(it.time);
+      var end = it.end ? minutesOf(it.end) : start + 60;
+      return { it: it, start: start, end: Math.min(24 * 60, Math.max(end, start + 30)) };
+    }).sort(function (a, b) { return a.start - b.start || b.end - a.end; });
+    var cluster = [];
+    var lanes = [];
+    var clusterEnd = -1;
+    function close() {
+      cluster.forEach(function (e) { e.lanes = lanes.length; });
+      cluster = [];
+      lanes = [];
+    }
+    evs.forEach(function (e) {
+      if (e.start >= clusterEnd) { close(); clusterEnd = -1; }
+      var lane = 0;
+      while (lane < lanes.length && lanes[lane] > e.start) lane++;
+      lanes[lane] = e.end;
+      e.lane = lane;
+      cluster.push(e);
+      clusterEnd = Math.max(clusterEnd, e.end);
+    });
+    close();
+    return evs;
+  }
+
+  function planBlock(date, it, compact) {
+    var b = el('button', 'tg-event' + (it.regular ? ' is-regular' : ' is-extra') + (it.done ? ' is-done' : ''));
+    b.type = 'button';
+    b.dataset.planDate = date;
+    b.dataset.planItem = it.id;
+    b.disabled = !plannable(date);
+    var when = it.time ? timeRange(it) : 'All day';
+    b.setAttribute('aria-label', it.title + ', ' + when + ', ' + formatDate(date, 'long') + (it.done ? ', done' : ''));
+    b.appendChild(el('span', 'tg-event-title', it.title));
+    if (it.time && !compact) b.appendChild(el('span', 'tg-event-time', when));
+    return b;
+  }
+
+  function renderTimeGrid(dates) {
+    var n = dates.length;
+    $('plan-grid').style.setProperty('--tg-n', String(n));
+    $('plan-grid').classList.toggle('is-day', n === 1);
+    var head = $('plan-grid-days');
+    var allday = $('plan-grid-allday');
+    var cols = $('plan-grid-cols');
+    head.textContent = '';
+    allday.textContent = '';
+    cols.textContent = '';
+    var hours = $('plan-grid-hours');
+    if (!hours.childNodes.length) {
+      for (var h = 1; h < 24; h++) {
+        var lab = el('span', 'tg-hour', hourLabel(h));
+        lab.style.top = (h * HOUR_PX) + 'px';
+        hours.appendChild(lab);
       }
     }
+    var earliest = 24 * 60;
+    var anyAllDay = false;
+    dates.forEach(function (d) {
+      var items = plannedItems(d);
+      var hb = planDayButton('tg-day', d);
+      hb.setAttribute('aria-label', planDayLabel(d, items.length));
+      hb.appendChild(el('span', 'tg-day-dow', formatDate(d, 'dowShort')));
+      hb.appendChild(el('span', 'tg-day-num', String(Number(d.slice(8)))));
+      head.appendChild(hb);
+      var ad = el('div', 'tg-allday-cell');
+      items.filter(function (it) { return !it.time; }).forEach(function (it) {
+        ad.appendChild(planBlock(d, it, true));
+        anyAllDay = true;
+      });
+      allday.appendChild(ad);
+      var col = el('div', 'tg-col' + (d < today ? ' is-past' : '') + (d === planDate && n > 1 ? ' is-selected' : ''));
+      col.dataset.slotDate = d;
+      layoutBlocks(items.filter(function (it) { return it.time; })).forEach(function (e) {
+        var b = planBlock(d, e.it, (e.end - e.start) < 50 || (n > 1 && e.lanes > 1));
+        b.style.top = (e.start / 60 * HOUR_PX) + 'px';
+        b.style.height = Math.max(18, (e.end - e.start) / 60 * HOUR_PX - 2) + 'px';
+        b.style.left = 'calc(' + (e.lane / e.lanes * 100) + '% + 1px)';
+        b.style.width = 'calc(' + (100 / e.lanes) + '% - 3px)';
+        col.appendChild(b);
+        earliest = Math.min(earliest, e.start);
+      });
+      if (d === today) {
+        var now = new Date();
+        var line = el('div', 'tg-now');
+        line.setAttribute('aria-hidden', 'true');
+        line.style.top = ((now.getHours() * 60 + now.getMinutes()) / 60 * HOUR_PX) + 'px';
+        col.appendChild(line);
+      }
+      cols.appendChild(col);
+    });
+    $('plan-grid').classList.toggle('has-allday', anyAllDay);
+    // Scroll to the morning (or the first item) when the dates shown change.
+    var key = planView + dates[0];
+    if (key !== planScrollKey) {
+      planScrollKey = key;
+      var startMin = earliest < 24 * 60 ? Math.min(earliest, 8 * 60) : 8 * 60;
+      $('plan-grid-scroll').scrollTop = Math.max(0, startMin / 60 - 0.5) * HOUR_PX;
+    }
+  }
+
+  function renderPlanCalendar() {
+    if (!planAnchor) planAnchor = planAnchorFor(planDate);
+    var month = planView === 'month';
+    $('plan-grid').hidden = month;
+    $('plan-month').hidden = !month;
+    var start = planAnchor;
+    var end = planView === 'day' ? start : planView === 'week' ? core.addDays(start, 6) : core.addDays(shiftAnchor(start, 1), -1);
+    $('plan-cal-title').textContent = planView === 'day' ? formatDate(start, 'long')
+      : planView === 'week' ? formatDate(start, 'short') + ' – ' + formatDate(end, 'short')
+        : formatMonth(Number(start.slice(0, 4)), Number(start.slice(5, 7)));
+    $('plan-cal-prev').disabled = start <= today;
+    $('plan-cal-next').disabled = end >= lastPlanDay();
+    $('plan-cal-prev').setAttribute('aria-label', 'Previous ' + planView);
+    $('plan-cal-next').setAttribute('aria-label', 'Next ' + planView);
+    if (!month) {
+      var dates = [];
+      for (var d = start; d <= end; d = core.addDays(d, 1)) dates.push(d);
+      renderTimeGrid(dates);
+      return;
+    }
+    var dow = $('plan-month-dow');
+    dow.textContent = '';
+    var ws = weekStart();
+    for (var k = 0; k < 7; k++) dow.appendChild(el('span', 'cal-dow', dayShort((ws + k) % 7).slice(0, 2)));
+    var grid = $('plan-month-grid');
+    grid.textContent = '';
+    var lead = (core.dayOfWeek(start) - ws + 7) % 7;
+    for (var j = 0; j < lead; j++) grid.appendChild(el('span', 'cal-cell is-outside'));
+    for (var day = start; day <= end; day = core.addDays(day, 1)) {
+      var count = plannedItems(day).length;
+      var cell = planDayButton('cal-cell plan-cell', day);
+      cell.setAttribute('aria-label', planDayLabel(day, count));
+      cell.appendChild(el('span', 'plan-cell-num', String(Number(day.slice(8)))));
+      if (count && day >= today) cell.appendChild(el('span', 'plan-cell-count', String(count)));
+      grid.appendChild(cell);
+    }
+  }
+
+  function selectPlanDay(date, focusSel) {
+    planDate = date;
+    planError('');
+    renderPlanDialog();
+    var again = focusSel && $('plan-dialog').querySelector(focusSel);
+    if (again) again.focus();
   }
 
   function onPlanCalendarClick(event) {
@@ -1557,17 +1678,30 @@
     if (nav) {
       if (nav.disabled) return;
       planAnchor = shiftAnchor(planAnchor, nav.id === 'plan-cal-next' ? 1 : -1);
-      renderPlanCalendar();
+      if (planView === 'day') planDate = planAnchor;
+      planError('');
+      renderPlanDialog();
       if (nav.disabled) (nav.id === 'plan-cal-next' ? $('plan-cal-prev') : $('plan-cal-next')).focus();
       return;
     }
     var day = event.target.closest('[data-plan-date]');
-    if (!day || day.disabled) return;
-    planDate = day.dataset.planDate;
-    planError('');
-    renderPlanDialog();
-    var again = $('plan-dialog').querySelector('[data-plan-date="' + planDate + '"]');
-    if (again) again.focus();
+    if (day) {
+      if (day.disabled) return;
+      var sel = day.dataset.planItem
+        ? '[data-plan-date="' + day.dataset.planDate + '"][data-plan-item="' + day.dataset.planItem + '"]'
+        : '.tg-day[data-plan-date="' + day.dataset.planDate + '"], .plan-cell[data-plan-date="' + day.dataset.planDate + '"]';
+      selectPlanDay(day.dataset.planDate, sel);
+      return;
+    }
+    // An empty slot in the time grid: start adding something at that time.
+    var col = event.target.closest('.tg-col');
+    if (!col || !plannable(col.dataset.slotDate)) return;
+    var y = event.clientY - col.getBoundingClientRect().top;
+    var startMin = Math.max(0, Math.min(23 * 60 + 30, Math.floor(y / HOUR_PX * 2) * 30));
+    selectPlanDay(col.dataset.slotDate, null);
+    $('plan-add-time').value = hhmm(startMin);
+    $('plan-add-end').value = startMin + 60 < 24 * 60 ? hhmm(startMin + 60) : '';
+    $('plan-add-title').focus();
   }
 
   function onPlanView(event) {
