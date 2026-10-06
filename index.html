@@ -10,8 +10,8 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="preload" href="fonts/instrument-sans-latin-var.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="fonts/jetbrains-mono-latin-var.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/styles.css?v=28">
-  <script src="js/theme.js?v=28"></script>
+  <link rel="stylesheet" href="css/styles.css?v=29">
+  <script src="js/theme.js?v=29"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -662,6 +662,34 @@
     </div>
   </dialog>
 
+  <dialog id="item-dialog" class="dialog item-dialog" aria-labelledby="item-title" aria-describedby="item-when">
+    <div class="item-head">
+      <span class="item-swatch" id="item-swatch" aria-hidden="true"></span>
+      <div class="item-head-text">
+        <h2 id="item-title" class="dialog-title" tabindex="-1"></h2>
+        <p id="item-when" class="item-when"></p>
+      </div>
+    </div>
+    <div class="field">
+      <label for="item-notes" class="label">Description</label>
+      <textarea id="item-notes" class="input textarea" rows="3" maxlength="2000" placeholder="Add a description"></textarea>
+    </div>
+    <div class="field">
+      <p class="label" id="item-tasks-label">Checklist <span id="item-tasks-count" class="item-tasks-count"></span></p>
+      <ul id="item-tasks" class="item-tasks" aria-labelledby="item-tasks-label"></ul>
+      <form id="item-task-form" class="plan-add-main item-task-add" novalidate>
+        <label for="item-task-input" class="visually-hidden">New checklist item</label>
+        <input id="item-task-input" class="input" type="text" maxlength="120" autocomplete="off" placeholder="Add a to-do" aria-describedby="item-error">
+        <button type="submit" class="btn btn-secondary">Add</button>
+      </form>
+      <p id="item-error" class="field-error" role="alert" hidden></p>
+    </div>
+    <div class="dialog-actions">
+      <button type="button" id="item-edit" class="btn btn-secondary">Edit time</button>
+      <button type="button" id="item-close" class="btn btn-primary">Done</button>
+    </div>
+  </dialog>
+
   <dialog id="day-dialog" class="dialog sheet day-sheet" aria-labelledby="day-dialog-title">
     <div class="sheet-head">
       <h2 id="day-dialog-title" class="dialog-title">Day details</h2>
@@ -681,14 +709,14 @@
     </form>
   </dialog>
 
-  <script src="js/icons.js?v=28"></script>
-  <script src="js/core.js?v=28"></script>
-  <script src="js/stats.js?v=28"></script>
-  <script src="js/plans.js?v=28"></script>
-  <script src="js/storage.js?v=28"></script>
-  <script src="js/sync.js?v=28"></script>
-  <script src="js/firebase-config.js?v=28"></script>
-  <script src="js/cloud.js?v=28"></script>
-  <script src="js/app.js?v=28"></script>
+  <script src="js/icons.js?v=29"></script>
+  <script src="js/core.js?v=29"></script>
+  <script src="js/stats.js?v=29"></script>
+  <script src="js/plans.js?v=29"></script>
+  <script src="js/storage.js?v=29"></script>
+  <script src="js/sync.js?v=29"></script>
+  <script src="js/firebase-config.js?v=29"></script>
+  <script src="js/cloud.js?v=29"></script>
+  <script src="js/app.js?v=29"></script>
 </body>
 </html>

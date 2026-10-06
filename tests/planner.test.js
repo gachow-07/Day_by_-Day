@@ -47,7 +47,7 @@ test('each day’s plan has that weekday’s regular items, sorted by time', () 
   s = core.addAgendaItem(s, TUE, { title: 'Study group', time: '18:00', end: '19:30' }, MON).state;
   const tue = core.agendaFor(s, TUE);
   assert.deepEqual(titles(tue), ['Dentist', 'Chemistry lab', 'Study group', 'Call mom'], 'untimed items last');
-  assert.deepEqual(tue[0], { id: 'p1', title: 'Dentist', time: '08:30', end: null, regular: false, skipped: false, done: false });
+  assert.deepEqual(tue[0], { id: 'p1', title: 'Dentist', time: '08:30', end: null, regular: false, skipped: false, done: false, notes: '', tasks: 0, tasksDone: 0 });
   assert.equal(tue[1].regular, true);
   assert.deepEqual(core.validateState(s), []);
 });
@@ -175,7 +175,7 @@ test('version 9 data gets planner: null and an empty agenda; plans export and im
   v9.habits.forEach((h) => { delete h.planner; });
   const r = core.migrate(v9);
   assert.ok(r.ok, r.message);
-  assert.equal(r.state.schemaVersion, 10);
+  assert.equal(r.state.schemaVersion, core.SCHEMA_VERSION);
   assert.deepEqual(r.state.agenda, {});
   assert.ok(r.state.habits.every((h) => h.planner === null));
   let p = core.addAgendaItem(s, TUE, { title: 'Dentist', time: '08:30' }, MON).state;
@@ -184,4 +184,66 @@ test('version 9 data gets planner: null and an empty agenda; plans export and im
   assert.ok(back.ok, back.message);
   assert.deepEqual(back.state.agenda, p.agenda);
   assert.deepEqual(back.state.habits[0].planner, p.habits[0].planner);
+});
+
+test('planned items get a description and a checklist for that day', () => {
+  let s = withPlanner(MON);
+  s = core.addAgendaItem(s, MON, { title: 'Study', time: '18:00', end: '20:00' }, MON).state;
+  s = core.setItemNotes(s, MON, 'p1', '  Library, 2nd floor  \n', MON).state;
+  s = core.addItemTask(s, MON, 'p1', ' Read  ch. 4 ', MON).state;
+  s = core.addItemTask(s, MON, 'p1', 'Problem set 3', MON).state;
+  s = core.setItemTaskDone(s, MON, 'p1', 't1', true, MON).state;
+  assert.deepEqual(core.itemDetails(s, MON, 'p1'), {
+    notes: 'Library, 2nd floor',
+    tasks: [{ id: 't1', text: 'Read ch. 4', done: true }, { id: 't2', text: 'Problem set 3', done: false }]
+  });
+  const study = core.agendaFor(s, MON).filter((it) => it.id === 'p1')[0];
+  assert.equal(study.notes, 'Library, 2nd floor');
+  assert.equal(study.tasks, 2);
+  assert.equal(study.tasksDone, 1);
+  assert.deepEqual(core.validateState(s), []);
+  // Regular items get their own checklist each day
+  s = core.addItemTask(s, MON, 'r1', 'Bring calculator', MON).state;
+  assert.equal(core.itemDetails(s, MON, 'r1').tasks.length, 1);
+  assert.equal(core.itemDetails(s, core.addDays(MON, 2), 'r1').tasks.length, 0, 'Wednesday’s Calculus starts empty');
+  assert.equal(core.addItemTask(s, TUE, 'r1', 'X', MON).error, 'unknown-item', 'no Calculus on Tuesday');
+  // Removing tasks and clearing notes drops empty details
+  s = core.removeItemTask(s, MON, 'r1', 't1', MON).state;
+  assert.equal(s.agenda[MON].details.r1, undefined);
+  assert.equal(core.removeItemTask(s, MON, 'p1', 't9', MON).error, 'unknown-task');
+  assert.equal(core.addItemTask(s, MON, 'p1', '   ', MON).error, 'invalid-task');
+  assert.equal(core.setItemNotes(s, MON, 'p1', 'x'.repeat(2001), MON).error, 'too-long');
+  // Past days can still be ticked off
+  const tue = core.ensureDays(s, TUE).state;
+  assert.ok(core.setItemTaskDone(tue, MON, 'p1', 't2', true, TUE).ok);
+  // Removing the item removes its details
+  s = core.removeAgendaItem(s, MON, 'p1', MON).state;
+  assert.equal(s.agenda[MON] && s.agenda[MON].details, undefined);
+  assert.deepEqual(core.validateState(s), []);
+});
+
+test('damaged details are rejected, and details export and import', () => {
+  let s = withPlanner(MON);
+  s = core.addAgendaItem(s, MON, { title: 'Study' }, MON).state;
+  s = core.addItemTask(s, MON, 'p1', 'Flashcards', MON).state;
+  const back = core.parseImport(JSON.stringify(core.buildExport(s, new Date())));
+  assert.ok(back.ok, back.message);
+  assert.deepEqual(back.state.agenda, s.agenda);
+  const bad = {
+    'details for a missing item': (x) => { x.agenda[MON].details.p7 = { notes: 'x' }; },
+    'empty details': (x) => { x.agenda[MON].details.p1 = {}; },
+    'task without done': (x) => { delete x.agenda[MON].details.p1.tasks[0].done; },
+    'bad task id': (x) => { x.agenda[MON].details.p1.tasks[0].id = 'p1'; },
+    'blank notes': (x) => { x.agenda[MON].details.p1.notes = '  '; }
+  };
+  for (const [name, damage] of Object.entries(bad)) {
+    const x = JSON.parse(JSON.stringify(s));
+    damage(x);
+    assert.ok(core.validateState(x).length, name);
+  }
+  const v10 = JSON.parse(JSON.stringify(withPlanner(MON)));
+  v10.schemaVersion = 10;
+  const m = core.migrate(v10);
+  assert.ok(m.ok, m.message);
+  assert.equal(m.state.schemaVersion, 11);
 });
