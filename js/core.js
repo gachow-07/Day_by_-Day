@@ -24,7 +24,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  var SCHEMA_VERSION = 10;
+  var SCHEMA_VERSION = 11;
   var APP_ID = 'day-by-day';
   var DAY_MS = 24 * 60 * 60 * 1000;
   var MIN_YEAR = 1970;
@@ -41,6 +41,9 @@
   var MAX_PLAN_ITEMS = 30;       // regular schedule items on the day planner goal
   var MAX_DAY_ITEMS = 30;        // one-off plan items per day
   var MAX_PLAN_TITLE = 80;
+  var MAX_NOTES_LENGTH = 2000;   // an item's description
+  var MAX_TASKS = 50;            // checklist items per planned item
+  var MAX_TASK_LENGTH = 120;
   var MAX_PLAN_AHEAD = 366;      // days ahead a plan can be made (about a year)
   var MAX_WORKOUT_LENGTH = 40;
   var MIN_GOAL_MINUTES = 5;
@@ -168,9 +171,11 @@
    *       each item on the weekdays in `days` (Sunday = 0). time and end are
    *       'HH:MM' or null. The first active planner goal drives the plan.
    *   agenda: { 'YYYY-MM-DD': { items?: [{ id: 'p1', title, time, end }],
-   *                              skip?: [regular item ids], done?: [item ids] } }
+   *                              skip?: [regular item ids], done?: [item ids],
+   *                              details?: { itemId: { notes?, tasks?: [{ id: 't1', text, done }] } } } }
    *     The plan for each day: one-off items, regular items skipped that
-   *     day, and items ticked off.
+   *     day, items ticked off, and each item's description and checklist
+   *     for that day (regular items get a fresh one each day).
    *   focus: { 'YYYY-MM-DD': 'text' }  daily intention (no longer edited;
    *     kept so older days still show it)
    *   settings: { weekStart: 0 | 1 }   Sunday or Monday
@@ -458,7 +463,7 @@
 
   function validAgendaEntry(e) {
     if (!isPlainObject(e)) return false;
-    if (Object.keys(e).some(function (k) { return ['items', 'skip', 'done'].indexOf(k) < 0; })) return false;
+    if (Object.keys(e).some(function (k) { return ['items', 'skip', 'done', 'details'].indexOf(k) < 0; })) return false;
     var items = e.items === undefined ? [] : e.items;
     if (!Array.isArray(items) || items.length > MAX_DAY_ITEMS) return false;
     if (!items.every(function (it) { return validPlanItem(it, /^p\d{1,4}$/) && Object.keys(it).length === 4; })) return false;
@@ -468,8 +473,27 @@
     var done = e.done === undefined ? [] : e.done;
     if (!Array.isArray(skip) || skip.length > MAX_PLAN_ITEMS || !uniqueIds(skip) || skip.some(function (id) { return typeof id !== 'string' || !/^r\d{1,4}$/.test(id); })) return false;
     if (!Array.isArray(done) || done.length > MAX_PLAN_ITEMS + MAX_DAY_ITEMS || !uniqueIds(done)) return false;
-    return done.every(function (id) {
+    if (!done.every(function (id) {
       return typeof id === 'string' && (/^r\d{1,4}$/.test(id) || ids.indexOf(id) >= 0);
+    })) return false;
+    if (e.details === undefined) return true;
+    if (!isPlainObject(e.details) || Object.keys(e.details).length > MAX_PLAN_ITEMS + MAX_DAY_ITEMS) return false;
+    return Object.keys(e.details).every(function (id) {
+      return (/^r\d{1,4}$/.test(id) || ids.indexOf(id) >= 0) && validDetails(e.details[id]);
+    });
+  }
+
+  function validDetails(d) {
+    if (!isPlainObject(d) || !Object.keys(d).length) return false;
+    if (Object.keys(d).some(function (k) { return k !== 'notes' && k !== 'tasks'; })) return false;
+    if (d.notes !== undefined && !(typeof d.notes === 'string' && d.notes.trim() && d.notes.length <= MAX_NOTES_LENGTH)) return false;
+    if (d.tasks === undefined) return true;
+    if (!Array.isArray(d.tasks) || !d.tasks.length || d.tasks.length > MAX_TASKS) return false;
+    if (!uniqueIds(d.tasks.map(function (t) { return t && t.id; }))) return false;
+    return d.tasks.every(function (t) {
+      return isPlainObject(t) && Object.keys(t).length === 3 && typeof t.id === 'string' && /^t\d{1,4}$/.test(t.id) &&
+        typeof t.text === 'string' && t.text === cleanPlanTitle(t.text) && t.text && t.text.length <= MAX_TASK_LENGTH &&
+        typeof t.done === 'boolean';
     });
   }
 
@@ -494,17 +518,26 @@
     var e = (state.agenda && state.agenda[date]) || {};
     var skip = e.skip || [];
     var done = e.done || [];
+    var details = e.details || {};
     var out = [];
+    function withDetails(item) {
+      var d = details[item.id];
+      var tasks = (d && d.tasks) || [];
+      item.notes = (d && d.notes) || '';
+      item.tasks = tasks.length;
+      item.tasksDone = tasks.filter(function (t) { return t.done; }).length;
+      return item;
+    }
     var h = plannerHabit(state);
     var dow = dayOfWeek(date);
     if (h) {
       h.planner.items.forEach(function (it) {
         if (it.days.indexOf(dow) < 0) return;
-        out.push({ id: it.id, title: it.title, time: it.time, end: it.end, regular: true, skipped: skip.indexOf(it.id) >= 0, done: done.indexOf(it.id) >= 0 });
+        out.push(withDetails({ id: it.id, title: it.title, time: it.time, end: it.end, regular: true, skipped: skip.indexOf(it.id) >= 0, done: done.indexOf(it.id) >= 0 }));
       });
     }
     (e.items || []).forEach(function (it) {
-      out.push({ id: it.id, title: it.title, time: it.time, end: it.end, regular: false, skipped: false, done: done.indexOf(it.id) >= 0 });
+      out.push(withDetails({ id: it.id, title: it.title, time: it.time, end: it.end, regular: false, skipped: false, done: done.indexOf(it.id) >= 0 }));
     });
     // Stable sort by time
     return out.map(function (it, i) { return [it, i]; }).sort(function (a, b) {
@@ -532,12 +565,20 @@
     var ids = e.items.map(function (it) { return it.id; });
     e.done = e.done.filter(function (id) { return id.charAt(0) === 'r' || ids.indexOf(id) >= 0; });
     ['items', 'skip', 'done'].forEach(function (k) { if (!e[k].length) delete e[k]; });
+    if (e.details) {
+      Object.keys(e.details).forEach(function (id) {
+        var d = e.details[id];
+        if (d.tasks && !d.tasks.length) delete d.tasks;
+        if (!d.notes) delete d.notes;
+        if ((id.charAt(0) === 'p' && ids.indexOf(id) < 0) || !Object.keys(d).length) delete e.details[id];
+      });
+      if (!Object.keys(e.details).length) delete e.details;
+    }
     if (Object.keys(e).length) next.agenda[date] = e;
     else delete next.agenda[date];
     return result(next, res || {});
   }
 
-  /** Add a one-off item { title, time, end } to the plan for `date` (today or later). */
   /** Check a one-off item's title and times: { title, time, end } or { error, message }. */
   function cleanAgendaItem(item) {
     var title = cleanPlanTitle(item && item.title);
@@ -548,6 +589,7 @@
     return { title: title, time: t.time, end: t.end };
   }
 
+  /** Add a one-off item { title, time, end } to the plan for `date` (today or later). */
   function addAgendaItem(state, date, item, today) {
     var bad = agendaDateError(state, date, today);
     if (bad) return bad;
@@ -586,6 +628,75 @@
       var before = e.items.length;
       e.items = e.items.filter(function (it) { return it.id !== id; });
       if (e.items.length === before) return { error: 'unknown-item', message: 'That item is no longer in the plan.' };
+      return {};
+    });
+  }
+
+  /* ---- An item's description and checklist (per day) ---- */
+
+  /** The description and checklist of item `id` on `date`: { notes, tasks: [{ id, text, done }] }. */
+  function itemDetails(state, date, id) {
+    var e = state.agenda && state.agenda[date];
+    var d = e && e.details && e.details[id];
+    return { notes: (d && d.notes) || '', tasks: clone((d && d.tasks) || []) };
+  }
+
+  /**
+   * Change an item's details with fn(details). Past days are allowed too,
+   * so last night's checklist can still be ticked off; the item must be in
+   * that day's plan.
+   */
+  function editDetails(state, date, id, today, fn) {
+    if (!isValidDateKey(date)) return failure(state, 'invalid-date', 'Invalid date.');
+    if (daysBetween(today, date) > MAX_PLAN_AHEAD) return failure(state, 'too-far', 'You can plan up to a year ahead.');
+    if (!agendaFor(state, date).some(function (it) { return it.id === id; })) {
+      return failure(state, 'unknown-item', 'That item is no longer in the plan.');
+    }
+    return editAgenda(state, date, function (e) {
+      e.details = e.details || {};
+      var d = e.details[id] || {};
+      d.tasks = d.tasks || [];
+      e.details[id] = d;
+      return fn(d);
+    });
+  }
+
+  /** Set (or clear, with '') an item's description for `date`. */
+  function setItemNotes(state, date, id, notes, today) {
+    var text = typeof notes === 'string' ? notes.replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '').trim() : '';
+    if (text.length > MAX_NOTES_LENGTH) return failure(state, 'too-long', 'Keep the description to ' + MAX_NOTES_LENGTH + ' characters or fewer.');
+    return editDetails(state, date, id, today, function (d) { d.notes = text; return {}; });
+  }
+
+  /** Add a checklist item to an item's details for `date`. */
+  function addItemTask(state, date, id, text, today) {
+    var t = cleanPlanTitle(text);
+    if (!t) return failure(state, 'invalid-task', 'Type what needs doing.');
+    if (t.length > MAX_TASK_LENGTH) return failure(state, 'invalid-task', 'Keep it to ' + MAX_TASK_LENGTH + ' characters or fewer.');
+    return editDetails(state, date, id, today, function (d) {
+      if (d.tasks.length >= MAX_TASKS) return { error: 'too-many', message: 'A checklist can have up to ' + MAX_TASKS + ' items.' };
+      var tid = nextItemId(d.tasks, 't');
+      d.tasks.push({ id: tid, text: t, done: false });
+      return { id: tid };
+    });
+  }
+
+  /** Tick a checklist item off (or back on). */
+  function setItemTaskDone(state, date, id, taskId, done, today) {
+    return editDetails(state, date, id, today, function (d) {
+      var t = d.tasks.filter(function (x) { return x.id === taskId; })[0];
+      if (!t) return { error: 'unknown-task', message: 'That checklist item is gone.' };
+      t.done = !!done;
+      return {};
+    });
+  }
+
+  /** Remove a checklist item. */
+  function removeItemTask(state, date, id, taskId, today) {
+    return editDetails(state, date, id, today, function (d) {
+      var before = d.tasks.length;
+      d.tasks = d.tasks.filter(function (x) { return x.id !== taskId; });
+      if (d.tasks.length === before) return { error: 'unknown-task', message: 'That checklist item is gone.' };
       return {};
     });
   }
@@ -1861,6 +1972,14 @@
       return next;
     },
 
+    10: function v10ToV11(old) {
+      // Adds descriptions and checklists to planned items; existing data is unchanged.
+      if (!isPlainObject(old)) throw new Error('Saved data is not an object.');
+      var next = clone(old);
+      next.schemaVersion = 11;
+      return next;
+    },
+
     7: function v7ToV8(old) {
       if (!isPlainObject(old)) throw new Error('Saved data is not an object.');
       var next = clone(old);
@@ -2020,6 +2139,13 @@
     addAgendaItem: addAgendaItem,
     removeAgendaItem: removeAgendaItem,
     updateAgendaItem: updateAgendaItem,
+    itemDetails: itemDetails,
+    setItemNotes: setItemNotes,
+    addItemTask: addItemTask,
+    setItemTaskDone: setItemTaskDone,
+    removeItemTask: removeItemTask,
+    MAX_NOTES_LENGTH: MAX_NOTES_LENGTH,
+    MAX_TASK_LENGTH: MAX_TASK_LENGTH,
     setAgendaSkip: setAgendaSkip,
     setAgendaDone: setAgendaDone,
     MAX_PLAN_TITLE: MAX_PLAN_TITLE,

@@ -1418,9 +1418,149 @@
   /** A block in today's plan: open the planner on today (editing it if it's a one-off item). */
   function onTodayPlanClick(event) {
     var b = event.target.closest('[data-plan-item]');
-    if (!b) return;
-    openPlanDialog(today);
-    if (b.classList.contains('is-extra')) startPlanEdit(b.dataset.planItem);
+    if (b) openItemDialog(today, b.dataset.planItem);
+  }
+
+  /* ---------------- A planned item's description and checklist ---------------- */
+
+  var itemOpen = null; // { date, id } shown in the item dialog
+  var notesTimer = null;
+
+  function openItemDialog(date, id) {
+    checkForNewDay();
+    itemOpen = { date: date, id: id };
+    $('item-error').hidden = true;
+    $('item-task-input').value = '';
+    $('item-notes').value = core.itemDetails(state, date, id).notes;
+    if (!renderItemDialog()) return;
+    openDialog('item-dialog', $('item-title'));
+  }
+
+  /** Fill the item dialog; false (and close it) if the item is gone. */
+  function renderItemDialog() {
+    if (!itemOpen) return false;
+    var it = core.agendaFor(state, itemOpen.date).filter(function (x) { return x.id === itemOpen.id; })[0];
+    if (!it) { closeDialog('item-dialog'); return false; }
+    $('item-title').textContent = it.title;
+    $('item-when').textContent = formatDate(itemOpen.date, 'long') + ' · ' + (it.time ? timeRange(it) : 'All day') +
+      (it.regular ? ' · Regular schedule' : '');
+    $('item-swatch').className = 'item-swatch ' + (it.regular ? 'is-regular' : 'is-extra');
+    var d = core.itemDetails(state, itemOpen.date, itemOpen.id);
+    if (document.activeElement !== $('item-notes') && !notesTimer) $('item-notes').value = d.notes;
+    var list = $('item-tasks');
+    var focusedTask = document.activeElement && list.contains(document.activeElement) ? document.activeElement.dataset.taskId : null;
+    list.textContent = '';
+    d.tasks.forEach(function (t) {
+      var li = el('li', 'item-task' + (t.done ? ' is-done' : ''));
+      var label = el('label', 'item-task-label');
+      var box = el('input', 'item-task-check');
+      box.type = 'checkbox';
+      box.checked = t.done;
+      box.dataset.taskId = t.id;
+      label.appendChild(box);
+      var mark = el('span', 'plan-box');
+      mark.setAttribute('aria-hidden', 'true');
+      mark.appendChild(icon('check', 14));
+      label.appendChild(mark);
+      label.appendChild(el('span', 'item-task-text', t.text));
+      li.appendChild(label);
+      var rm = el('button', 'icon-btn item-task-remove');
+      rm.type = 'button';
+      rm.dataset.taskRemove = t.id;
+      rm.setAttribute('aria-label', 'Remove ' + t.text);
+      rm.dataset.tip = 'Remove';
+      rm.appendChild(icon('x', 16));
+      li.appendChild(rm);
+      list.appendChild(li);
+    });
+    list.hidden = !d.tasks.length;
+    var done = d.tasks.filter(function (t) { return t.done; }).length;
+    $('item-tasks-count').textContent = d.tasks.length ? done + '/' + d.tasks.length : '';
+    // Changing the time: one-off items in the planner, regular ones in the schedule.
+    var canPlan = plannable(itemOpen.date);
+    $('item-edit').hidden = !canPlan;
+    $('item-edit').textContent = it.regular ? 'Edit schedule' : 'Edit time';
+    if (focusedTask) {
+      var again = list.querySelector('[data-task-id="' + focusedTask + '"]');
+      if (again) again.focus();
+    }
+    return true;
+  }
+
+  function itemError(message) {
+    $('item-error').textContent = message || '';
+    $('item-error').hidden = !message;
+  }
+
+  /** After a change in the item dialog: save, then refresh what shows it. */
+  function commitItem(r) {
+    if (!r.ok) { itemError(r.message); return false; }
+    if (!commit(r.state)) return false;
+    itemError('');
+    renderItemDialog();
+    if ($('plan-dialog').open) renderPlanDialog();
+    return true;
+  }
+
+  function saveItemNotes() {
+    clearTimeout(notesTimer);
+    notesTimer = null;
+    if (!itemOpen) return;
+    var value = $('item-notes').value;
+    if (value.trim() === core.itemDetails(state, itemOpen.date, itemOpen.id).notes) return;
+    if (holdForAccount()) return;
+    commitItem(core.setItemNotes(state, itemOpen.date, itemOpen.id, value, today));
+  }
+
+  function onItemTaskAdd(event) {
+    event.preventDefault();
+    checkForNewDay();
+    if (!itemOpen || holdForAccount()) return;
+    var text = $('item-task-input').value;
+    if (commitItem(core.addItemTask(state, itemOpen.date, itemOpen.id, text, today))) {
+      $('item-task-input').value = '';
+      announce('Added ' + core.cleanName(text) + ' to the checklist.');
+    }
+    $('item-task-input').focus();
+  }
+
+  function onItemTaskChange(event) {
+    var box = event.target.closest('.item-task-check');
+    if (!box || !itemOpen) return;
+    if (holdForAccount()) { renderItemDialog(); return; }
+    if (!commitItem(core.setItemTaskDone(state, itemOpen.date, itemOpen.id, box.dataset.taskId, box.checked, today))) renderItemDialog();
+  }
+
+  function onItemTaskRemove(event) {
+    var b = event.target.closest('[data-task-remove]');
+    if (!b || !itemOpen || holdForAccount()) return;
+    var li = b.closest('li');
+    var next = li.nextElementSibling || li.previousElementSibling;
+    var nextId = next ? next.querySelector('.item-task-check').dataset.taskId : null;
+    var text = li.querySelector('.item-task-text').textContent;
+    if (!commitItem(core.removeItemTask(state, itemOpen.date, itemOpen.id, b.dataset.taskRemove, today))) return;
+    announce('Removed ' + text + '.');
+    var focusEl = nextId && $('item-tasks').querySelector('[data-task-remove="' + nextId + '"]');
+    (focusEl || $('item-task-input')).focus();
+  }
+
+  function onItemEdit() {
+    if (!itemOpen) return;
+    var open = itemOpen;
+    var it = core.agendaFor(state, open.date).filter(function (x) { return x.id === open.id; })[0];
+    closeDialog('item-dialog');
+    if (!it) return;
+    if (it.regular) {
+      var p = core.plannerHabit(state);
+      if ($('plan-dialog').open) closeDialog('plan-dialog');
+      if (p) openGoalForm(p.id);
+      return;
+    }
+    if (!$('plan-dialog').open || planDate !== open.date) {
+      if ($('plan-dialog').open) closeDialog('plan-dialog');
+      openPlanDialog(open.date);
+    }
+    startPlanEdit(open.id);
   }
 
   var planDate = null; // the day open in the plan dialog
@@ -1453,11 +1593,21 @@
 
   function planRow(it, actionText, actionLabel, act) {
     var li = el('li', 'plan-edit-row' + (it.skipped ? ' is-skipped' : ''));
-    var text = el('span', 'plan-edit-text');
+    var text = el('button', 'plan-edit-text');
+    text.type = 'button';
+    text.dataset.planAct = 'open';
+    text.dataset.planId = it.id;
+    text.setAttribute('aria-label', it.title + (it.tasks ? ', checklist ' + it.tasksDone + ' of ' + it.tasks + ' done' : '') + '. Open details');
+
     text.appendChild(el('span', 'plan-time' + (it.time ? '' : ' is-anytime'), it.time ? timeRange(it) : 'Anytime'));
     var title = el('span', 'plan-title', it.title);
     text.appendChild(title);
     if (it.skipped) text.appendChild(el('span', 'plan-skipped', 'Skipped'));
+    if (it.tasks) {
+      var tp = el('span', 'plan-tasks' + (it.tasksDone === it.tasks ? ' is-complete' : ''), it.tasksDone + '/' + it.tasks);
+      tp.setAttribute('aria-hidden', 'true');
+      text.appendChild(tp);
+    }
     li.appendChild(text);
     if (act === 'remove') {
       if (it.id === planEditing) li.classList.add('is-editing');
@@ -1613,11 +1763,18 @@
     b.type = 'button';
     b.dataset.planDate = date;
     b.dataset.planItem = it.id;
-    b.disabled = !plannable(date);
     var when = it.time ? timeRange(it) : 'All day';
-    b.setAttribute('aria-label', it.title + ', ' + when + ', ' + formatDate(date, 'long') + (it.done ? ', done' : ''));
+    b.setAttribute('aria-label', it.title + ', ' + when + ', ' + formatDate(date, 'long') + (it.done ? ', done' : '') +
+      (it.tasks ? ', checklist ' + it.tasksDone + ' of ' + it.tasks + ' done' : '') + '. Open details');
     b.appendChild(el('span', 'tg-event-title', it.title));
     if (it.time && !compact) b.appendChild(el('span', 'tg-event-time', when));
+    if (it.tasks) {
+      var prog = el('span', 'tg-event-tasks' + (it.tasksDone === it.tasks ? ' is-complete' : ''));
+      prog.setAttribute('aria-hidden', 'true');
+      prog.appendChild(icon('check', 11));
+      prog.appendChild(document.createTextNode(it.tasksDone + '/' + it.tasks));
+      b.appendChild(prog);
+    }
     return b;
   }
 
@@ -1745,10 +1902,10 @@
     var day = event.target.closest('[data-plan-date]');
     if (day) {
       if (day.disabled) return;
-      if (day.dataset.planItem && day.classList.contains('is-extra')) {
-        // A one-off item's block: open it for editing.
-        selectPlanDay(day.dataset.planDate, null);
-        startPlanEdit(day.dataset.planItem);
+      if (day.dataset.planItem) {
+        // An item's block: show its description and checklist.
+        if (plannable(day.dataset.planDate) && day.dataset.planDate !== planDate) selectPlanDay(day.dataset.planDate, null);
+        openItemDialog(day.dataset.planDate, day.dataset.planItem);
         return;
       }
       var sel = day.dataset.planItem
@@ -1846,6 +2003,7 @@
     var act = b.dataset.planAct;
     var id = b.dataset.planId;
     if (act === 'edit') { startPlanEdit(id); return; }
+    if (act === 'open') { openItemDialog(planDate, id); return; }
     var it = core.agendaFor(state, planDate).filter(function (x) { return x.id === id; })[0];
     var r = act === 'remove'
       ? core.removeAgendaItem(state, planDate, id, today)
@@ -1856,7 +2014,7 @@
     if (act === 'remove' && id === planEditing) stopPlanEdit();
     renderPlanDialog();
     if (it) announce(act === 'remove' ? 'Removed ' + it.title + '.' : act === 'skip' ? 'Skipping ' + it.title + ' that day.' : it.title + ' is back on.');
-    var again = $('plan-dialog').querySelector('[data-plan-id="' + id + '"]');
+    var again = $('plan-dialog').querySelector('.plan-skip[data-plan-id="' + id + '"]');
     (again || $('plan-add-title')).focus();
   }
 
@@ -3908,6 +4066,22 @@
       var p = core.plannerHabit(state);
       closeDialog('plan-dialog');
       if (p) openGoalForm(p.id);
+    });
+    $('item-task-form').addEventListener('submit', onItemTaskAdd);
+    $('item-tasks').addEventListener('change', onItemTaskChange);
+    $('item-tasks').addEventListener('click', onItemTaskRemove);
+    $('item-notes').addEventListener('input', function () {
+      clearTimeout(notesTimer);
+      notesTimer = setTimeout(saveItemNotes, 700);
+    });
+    $('item-notes').addEventListener('change', saveItemNotes);
+    $('item-edit').addEventListener('click', onItemEdit);
+    $('item-close').addEventListener('click', function () { closeDialog('item-dialog'); });
+    $('item-dialog').addEventListener('close', function () {
+      saveItemNotes();
+      itemOpen = null;
+      itemError('');
+      restoreFocus('item-dialog', $('plan-dialog').open ? $('plan-add-title') : $('plan-list'));
     });
     $('plan-add-cancel').addEventListener('click', function () {
       stopPlanEdit();

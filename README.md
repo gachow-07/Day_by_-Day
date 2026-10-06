@@ -101,6 +101,7 @@ Make a goal your day planner by turning on **Plan my next day** in its form (a n
 
 - **Planning tomorrow:** tap **Plan** on the goal. It opens on tomorrow, with a calendar on top. **Day** and **Week** show a time grid like a desk calendar app: hours down the side, each item as a coloured block from its start to its end time (regular schedule items in purple, one-off items in blue, done items faded), untimed items in an **All day** row, and a red line at the current time. Click an empty slot to start adding something at that time. To change something you added, tap its block or its pencil button: its name and times load into the form, so edit them and **Save** (or **Cancel**). While editing, clicking an empty slot moves it there and keeps its length. **Month** shows a month grid with a count on each day. Use the arrows to move between days, weeks or months, and tap any day from today up to a year ahead to plan it. For the chosen day you see its regular items (tap **Skip** if one isn't happening, just for that day) and can add one-off things, with or without a time. **Done planning** checks the goal off for today.
 - **Today's plan** sits near the top of Today as a day calendar: only the hours that have something in them, each item a block from its start to its end time, untimed items in an **All day** row, and a red line at the current time. Tap a block to open the planner (one-off items open ready to edit). **Edit** opens today's plan the same way.
+- **Description and checklist:** tap any planned item (its block, or its name in the planner) to open it. Add a description and a checklist of things to do, for example "Read ch. 4" and "Problem set 3" under Study, and tick them off as you go. Blocks show checklist progress like 1/3. Each day gets its own: Monday's Calculus checklist is separate from Wednesday's. **Edit time** (or **Edit schedule** for regular items) changes when it happens.
 - One goal is the day planner at a time. A planner goal is checked off by planning, so it doesn't track time, water or workouts.
 
 The old **Focus** line has been removed. Focus text saved on earlier days is kept and still shows in day details and exports.
@@ -143,7 +144,7 @@ The tests in `tests/` cover:
 - water goals: logging, units and validation, cups and gallons stored as fl oz, ml/oz conversion, the daily average, and the v6 → 7 migration
 - partly done and time goals: logging in pieces, reaching the goal, undo, ticking and unticking a timed goal, partial credit in completion rates without Locked In or streaks, calendar and grid states, switching a goal to or from timed, validation, the v5 → 6 migration, and export/import
 - workout splits: rotation on due days only and over many weeks, times-per-week splits, swapping a workout (and swapping back), re-anchoring when the schedule changes, validation, the v4 → 5 migration, weekly plans (schedule from the plan, swaps that last one week, workouts not planned later that week, swapping back, a Monday week start, validation, import and the v8 → 9 migration), and workouts in day details and exports
-- the day planner: regular schedule ids and validation, each day's plan by weekday and time, planning only today or up to a year ahead, skipping a regular item for one day, removing and editing items, ticking off today's plan, planner goals not tracking amounts or workouts, paused planners, damaged data, the v9 → 10 migration, and export/import
+- the day planner: regular schedule ids and validation, each day's plan by weekday and time, planning only today or up to a year ahead, skipping a regular item for one day, removing and editing items, descriptions and checklists (per day, also on past days), ticking off today's plan, planner goals not tracking amounts or workouts, paused planners, damaged data, the v9 → 10 migration, and export/import
 - plan entitlements (Early access grants everything; Free and Pro limits)
 - theme preference handling (fallback to Auto, blocked storage)
 - sync decisions: first-sign-in upload, fresh-device download, live changes, conflicts, stale devices, unreadable account data
@@ -194,7 +195,7 @@ If you are not signed in, everything lives in this browser only. Clearing site d
 
 ### Saved-data format and migrations
 
-Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaVersion` field. The current version is **10**:
+Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaVersion` field. The current version is **11**:
 
 ```js
 {
@@ -234,8 +235,11 @@ Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaV
     // untimed goals marked partly done. Both count toward completion rates, never toward Locked In.
   },
   agenda: { '2026-09-02': { items: [{ id: 'p1', title: 'Dentist', time: '08:30', end: null }],
-                           skip: ['r1'], done: ['p1'] } },
-                    // the plan for each day: one-off items, regular items skipped that day, and items ticked off
+                           skip: ['r1'], done: ['p1'],
+                           details: { p1: { notes: 'Bring insurance card',
+                                            tasks: [{ id: 't1', text: 'Fill in the form', done: true }] } } } },
+                    // the plan for each day: one-off items, regular items skipped that day, items ticked off,
+                    // and each item's description and checklist for that day
   focus: { '2026-09-01': 'Finish the essay draft' },   // daily intention from older versions (no longer edited)
   settings: { weekStart: 0 },                          // 0 = Sunday, 1 = Monday
   timer: null   // or the running study timer: { habitId, date (the day it started), startedAt, pausedAt,
@@ -245,6 +249,7 @@ Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaV
 
 Streaks and all statistics are calculated from `days` (see `js/stats.js`); no counters are stored.
 
+- **Version 10 → 11:** adds descriptions and checklists to planned items (`agenda[date].details`). Existing data is unchanged; only the version number changes. The original is first copied to `day-by-day.backup.v10.<timestamp>`.
 - **Version 9 → 10:** adds the day planner: goals gain `planner: null`, and an empty `agenda` is added. Nothing else changes. The original is first copied to `day-by-day.backup.v9.<timestamp>`.
 - **Version 8 → 9:** adds weekly workout plans (`split.type: 'weekly'`). Existing data is unchanged; only the version number changes. The original is first copied to `day-by-day.backup.v8.<timestamp>`.
 - **Version 7 → 8:** adds `timer: null` (no study timer running). Nothing else changes. The original is first copied to `day-by-day.backup.v7.<timestamp>`.
