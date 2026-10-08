@@ -2,16 +2,17 @@
  * Day by Day — service worker for offline use.
  *
  * Caches the app shell on install so the app opens without a connection.
- * Pages use network-first (so updates arrive promptly), falling back to the
- * cached copy offline; versioned assets use cache-first. Only same-origin
- * GET requests are handled; Firebase sign-in and sync go straight to the
- * network (sync catches up when you're back online).
+ * Pages use network-first, revalidated with the server (so updates arrive
+ * promptly), falling back to the cached copy offline; versioned assets use
+ * cache-first. Only same-origin GET requests are handled; Firebase sign-in
+ * and sync go straight to the network (sync catches up when you're back
+ * online).
  *
  * Keep VERSION equal to the ?v= tag in index.html (a test checks this).
  */
 'use strict';
 
-var VERSION = '31';
+var VERSION = '32';
 var CACHE = 'day-by-day-v' + VERSION;
 var ASSETS = [
   './',
@@ -50,7 +51,9 @@ self.addEventListener('fetch', function (event) {
   if (url.origin !== self.location.origin) return;
 
   if (req.mode === 'navigate') {
-    event.respondWith(fetch(req).then(function (res) {
+    // Always check with the server (not the browser's 10-minute HTTP cache),
+    // so a new version shows up on the next open.
+    event.respondWith(fetch(req, { cache: 'no-cache' }).then(function (res) {
       var copy = res.clone();
       caches.open(CACHE).then(function (cache) { cache.put('index.html', copy); });
       return res;
