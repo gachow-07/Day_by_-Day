@@ -701,6 +701,32 @@
     });
   }
 
+  /**
+   * Copy unfinished to-dos (texts) into one all-day item on `date`, named
+   * `title` (default "Leftover to-dos"). Duplicates are dropped. Returns
+   * { id, count }.
+   */
+  function carryOverTasks(state, date, texts, today, title) {
+    var list = [];
+    (texts || []).forEach(function (t) {
+      var c = cleanPlanTitle(t);
+      if (c && c.length <= MAX_TASK_LENGTH && list.indexOf(c) < 0) list.push(c);
+    });
+    if (!list.length) return failure(state, 'nothing', 'There’s nothing to carry over.');
+    var r = addAgendaItem(state, date, { title: title || 'Leftover to-dos' }, today);
+    if (!r.ok) return r;
+    var next = r.state;
+    var id = r.id;
+    var count = 0;
+    for (var i = 0; i < list.length && count < MAX_TASKS; i++) {
+      var a = addItemTask(next, date, id, list[i], today);
+      if (!a.ok) return a;
+      next = a.state;
+      count++;
+    }
+    return result(next, { id: id, count: count });
+  }
+
   /** Skip a regular schedule item on `date` (or bring it back). */
   function setAgendaSkip(state, date, id, skip, today) {
     var bad = agendaDateError(state, date, today);
@@ -2144,6 +2170,7 @@
     addItemTask: addItemTask,
     setItemTaskDone: setItemTaskDone,
     removeItemTask: removeItemTask,
+    carryOverTasks: carryOverTasks,
     MAX_NOTES_LENGTH: MAX_NOTES_LENGTH,
     MAX_TASK_LENGTH: MAX_TASK_LENGTH,
     setAgendaSkip: setAgendaSkip,
