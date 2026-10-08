@@ -3833,9 +3833,36 @@
 
   function registerServiceWorker() {
     if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
-    navigator.serviceWorker.register('sw.js').catch(function () {
+    var hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('sw.js').then(function (reg) {
+      // A page left open (a home-screen app in the background, a tab) never
+      // reloads by itself, so look for a new version whenever it's shown
+      // again, and every half hour while it's open.
+      if (!reg || typeof reg.update !== 'function') return;
+      var check = function () {
+        try { reg.update().catch(function () {}); } catch (e) { /* not available here */ }
+      };
+      document.addEventListener('visibilitychange', function () { if (!document.hidden) check(); });
+      setInterval(check, 30 * 60000);
+    }).catch(function () {
       // The app still works online; offline loading just isn't available.
     });
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      // The first install takes control without anything having changed.
+      if (!hadController) { hadController = true; return; }
+      onAppUpdated();
+    });
+  }
+
+  /** A new version is installed: reload now, unless that would interrupt something. */
+  function onAppUpdated() {
+    var active = document.activeElement;
+    var typing = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT');
+    if (!anyDialogOpen() && !typing && !drag) {
+      location.reload();
+      return;
+    }
+    showNotice('Day by Day was updated.', { label: 'Reload', run: function () { location.reload(); } });
   }
 
   /* ---------------- Render ---------------- */

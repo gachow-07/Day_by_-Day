@@ -8,6 +8,7 @@ Open the app → check off your goals → leave.
 
 - Plain HTML, CSS and JavaScript. No framework, no build step, no runtime dependencies. The JetBrains Mono and Instrument Sans typefaces and a subset of [Lucide](https://lucide.dev) icons are bundled (`fonts/`, `js/icons.js`, licences included).
 - Works offline, including opening the app with no connection (a service worker caches it). Data is always saved in your browser's `localStorage` first.
+- Updates itself: an open copy (a tab, or the app on a phone's home screen) checks for a new version whenever you come back to it and every half hour, then reloads. If you're typing or have a window open, it shows **Day by Day was updated. Reload** instead.
 - Can be installed as an app (web manifest), with a **Check in today** shortcut.
 - Optional **Sign in with Google** saves your progress to your account and syncs it across devices (Firebase; see [Sign-in and sync](#sign-in-and-sync)). Sign-in stays hidden until it is configured.
 - Light and dark themes. **Auto** follows your device setting; **Light** or **Dark** overrides it. The choice is saved per device and is not part of exported data.
