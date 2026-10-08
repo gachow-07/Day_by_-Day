@@ -22,6 +22,8 @@
   var TABS = ['today', 'stats', 'settings'];
   var NOTIFY_KEY = 'day-by-day.notify';
   var REMINDED_KEY = 'day-by-day.reminded';
+  var RECAP_HIDDEN_KEY = 'day-by-day.recap-hidden';   // the Sunday the recap card was hidden
+  var RECAP_CARRIED_KEY = 'day-by-day.recap-carried'; // the Sunday whose to-dos were carried over
   var WIDE = window.matchMedia ? window.matchMedia('(min-width: 1024px)') : { matches: false };
   var SIDEBAR = window.matchMedia ? window.matchMedia('(min-width: 768px)') : { matches: false };
 
@@ -1235,6 +1237,7 @@
     $('hero').hidden = !hasHabits;
     $('goals-card').hidden = !hasHabits;
     renderDayPlan();
+    renderRecapCard();
     if (!hasHabits) {
       renderedGoalSignature = null;
       wasLockedIn = null;
@@ -1409,10 +1412,201 @@
       }
     }
     box.hidden = !items.length;
+    renderNextUp(items, nowMin);
     var tomorrowCount = core.agendaFor(state, core.addDays(today, 1)).filter(function (it) { return !it.skipped; }).length;
     $('plan-empty').hidden = !!items.length;
     $('plan-empty').textContent = 'Nothing planned for today.' +
       (tomorrowCount ? '' : ' Tap Plan on “' + planner.name + '” to plan tomorrow.');
+  }
+
+  /* ---------------- Next up ---------------- */
+
+  var nextUpId = null;
+
+  function itemEndMin(it) {
+    return it.end ? minutesOf(it.end) : minutesOf(it.time) + 60;
+  }
+
+  function inMinutes(min) {
+    return min < 1 ? 'less than a minute' : formatDuration(Math.round(min));
+  }
+
+  /** What's on now (or next) in today's plan, its countdown and checklist. */
+  function renderNextUp(items, nowMin) {
+    var timed = items.filter(function (it) { return it.time; });
+    var current = timed.filter(function (it) { return minutesOf(it.time) <= nowMin && nowMin < itemEndMin(it); })[0];
+    var upcoming = timed.filter(function (it) { return minutesOf(it.time) > nowMin; });
+    var it = current || upcoming[0];
+    var box = $('next-up');
+    box.hidden = !it;
+    if (!it) { nextUpId = null; return; }
+    var then = current ? upcoming[0] : upcoming[1];
+    nextUpId = it.id;
+    box.classList.toggle('is-now', !!current);
+    box.classList.toggle('is-extra', !it.regular);
+    $('next-up-kicker').textContent = current ? 'Now' : 'Next';
+    $('next-up-when').textContent = current
+      ? 'ends in ' + inMinutes(itemEndMin(it) - nowMin)
+      : 'in ' + inMinutes(minutesOf(it.time) - nowMin);
+    $('next-up-open').textContent = it.title;
+    $('next-up-open').setAttribute('aria-label', it.title + '. Open details');
+    var firstLine = it.notes ? it.notes.split('\n')[0] : '';
+    $('next-up-time').textContent = timeRange(it) + (firstLine ? ' · ' + firstLine : '');
+    var list = $('next-up-tasks');
+    var focused = document.activeElement && list.contains(document.activeElement) ? document.activeElement.dataset.taskId : null;
+    list.textContent = '';
+    core.itemDetails(state, today, it.id).tasks.forEach(function (t) {
+      var li = el('li', 'item-task' + (t.done ? ' is-done' : ''));
+      var label = el('label', 'item-task-label');
+      var cb = el('input', 'item-task-check');
+      cb.type = 'checkbox';
+      cb.checked = t.done;
+      cb.dataset.taskId = t.id;
+      label.appendChild(cb);
+      var mark = el('span', 'plan-box');
+      mark.setAttribute('aria-hidden', 'true');
+      mark.appendChild(icon('check', 14));
+      label.appendChild(mark);
+      label.appendChild(el('span', 'item-task-text', t.text));
+      li.appendChild(label);
+      list.appendChild(li);
+    });
+    list.hidden = !list.children.length;
+    if (focused) {
+      var again = list.querySelector('[data-task-id="' + focused + '"]');
+      if (again) again.focus();
+    }
+    $('next-up-then').textContent = then ? 'Then ' + then.title + ' at ' + formatTime(then.time) : '';
+    $('next-up-then').hidden = !then;
+  }
+
+  function onNextUpTask(event) {
+    var cb = event.target.closest('.item-task-check');
+    if (!cb || !nextUpId) return;
+    checkForNewDay();
+    if (holdForAccount()) { renderDayPlan(); return; }
+    var r = core.setItemTaskDone(state, today, nextUpId, cb.dataset.taskId, cb.checked, today);
+    if (!r.ok) { announce(r.message); $('plan-list').dataset.sig = ''; renderDayPlan(); return; }
+    commit(r.state);
+  }
+
+  /* ---------------- Weekly recap ---------------- */
+
+  function shortDay(date) {
+    return formatDate(date, 'dowShort');
+  }
+
+  function recapStat(label, value) {
+    var d = el('div', 'recap-stat');
+    d.appendChild(el('dt', 'recap-stat-label', label));
+    d.appendChild(el('dd', 'recap-stat-value', value));
+    return d;
+  }
+
+  /** Fill `box` with the recap of the 7 days ending `end`. */
+  function renderRecap(box, end) {
+    var r = stats.weekRecap(state, end);
+    box.textContent = '';
+    box.appendChild(el('p', 'recap-range', formatDate(r.start, 'short') + ' – ' + formatDate(r.end, 'short')));
+    if (!r.days && !r.planned) {
+      box.appendChild(el('p', 'recap-empty', 'Nothing tracked these 7 days yet.'));
+      return;
+    }
+    var dl = el('dl', 'recap-stats');
+    dl.appendChild(recapStat('Locked in', r.locked + '/' + r.days + ' days'));
+    if (r.rate !== null) dl.appendChild(recapStat('Goals done', r.rate + '%'));
+    if (r.workoutsPlanned) dl.appendChild(recapStat('Workouts', r.workouts.length + '/' + r.workoutsPlanned));
+    if (r.studyMinutes) dl.appendChild(recapStat('Time logged', formatDuration(r.studyMinutes)));
+    if (r.tasks) dl.appendChild(recapStat('To-dos done', r.tasksDone + '/' + r.tasks));
+    box.appendChild(dl);
+
+    var goals = r.goals.filter(function (g) { return g.due || g.flex; });
+    if (goals.length) {
+      box.appendChild(el('h3', 'recap-head', 'Goals'));
+      var ul = el('ul', 'recap-goals');
+      goals.forEach(function (g) {
+        var li = el('li', 'recap-goal');
+        li.appendChild(el('span', 'recap-goal-name', g.name));
+        var value = g.flex ? g.done + '/' + g.target + ' this week' : g.done + '/' + g.due;
+        li.appendChild(el('span', 'recap-goal-value', value));
+        var bar = el('span', 'recap-bar');
+        bar.setAttribute('aria-hidden', 'true');
+        var fill = el('span', 'recap-bar-fill');
+        var pct = g.flex ? Math.min(100, g.target ? g.done / g.target * 100 : 0) : (g.rate || 0);
+        fill.style.width = Math.round(pct) + '%';
+        if (pct >= 100) fill.classList.add('is-full');
+        bar.appendChild(fill);
+        li.appendChild(bar);
+        ul.appendChild(li);
+      });
+      box.appendChild(ul);
+    }
+
+    if (r.workouts.length) {
+      box.appendChild(el('h3', 'recap-head', 'Workouts'));
+      box.appendChild(el('p', 'recap-workouts', r.workouts.map(function (w) { return shortDay(w.date) + ' ' + w.workout; }).join(' · ')));
+    }
+
+    if (r.unfinished.length) {
+      box.appendChild(el('h3', 'recap-head', 'Still to do'));
+      var todo = el('ul', 'recap-todo');
+      r.unfinished.slice(0, 6).forEach(function (u) {
+        var li = el('li');
+        li.appendChild(el('span', 'recap-todo-text', u.text));
+        li.appendChild(el('span', 'recap-todo-from', u.item + ', ' + shortDay(u.date)));
+        todo.appendChild(li);
+      });
+      if (r.unfinished.length > 6) todo.appendChild(el('li', 'recap-todo-more', '+' + (r.unfinished.length - 6) + ' more'));
+      box.appendChild(todo);
+      var tomorrow = core.addDays(today, 1);
+      if (core.plannerHabit(state)) {
+        if (readPref(RECAP_CARRIED_KEY, '') === end) {
+          box.appendChild(el('p', 'recap-note', 'Carried over to ' + formatDate(tomorrow, 'dowLong') + '’s plan.'));
+        } else {
+          var carry = el('button', 'btn btn-secondary btn-sm recap-carry', 'Carry over to ' + formatDate(tomorrow, 'dowLong'));
+          carry.type = 'button';
+          carry.dataset.recapEnd = end;
+          box.appendChild(carry);
+        }
+      }
+    }
+  }
+
+  function showRecapCard() {
+    return state.habits.length > 0 && core.dayOfWeek(today) === 0 && readPref(RECAP_HIDDEN_KEY, '') !== today;
+  }
+
+  function renderRecapCard() {
+    var show = showRecapCard();
+    $('recap-card').hidden = !show;
+    if (show && !$('recap-card').contains(document.activeElement)) renderRecap($('recap-body'), today);
+  }
+
+  function onRecapCarry(event) {
+    var b = event.target.closest('.recap-carry');
+    if (!b) return;
+    checkForNewDay();
+    if (holdForAccount()) return;
+    var end = b.dataset.recapEnd;
+    var texts = stats.weekRecap(state, end).unfinished.map(function (u) { return u.text; });
+    var tomorrow = core.addDays(today, 1);
+    var r = core.carryOverTasks(state, tomorrow, texts, today);
+    if (!r.ok) { announce(r.message); showToast(r.message); return; }
+    writePref(RECAP_CARRIED_KEY, end);
+    if (!commit(r.state)) return;
+    var box = b.closest('.recap-body');
+    renderRecap(box, end);
+    var msg = 'Added ' + plural(r.count, 'to-do') + ' to ' + formatDate(tomorrow, 'dowLong') + '’s plan as “Leftover to-dos”.';
+    showToast(msg);
+    announce(msg);
+    var note = box.querySelector('.recap-note');
+    if (note) { note.tabIndex = -1; note.focus(); }
+  }
+
+  function openRecapDialog() {
+    renderRecap($('recap-dialog-body'), today);
+    $('recap-dialog-title').textContent = 'Past 7 days';
+    openDialog('recap-dialog', $('recap-dialog-close'));
   }
 
   /** A block in today's plan: open the planner on today (editing it if it's a one-off item). */
@@ -4026,6 +4220,19 @@
     $('first-goal-form').addEventListener('submit', onFirstGoal);
     $('plan-edit-today').addEventListener('click', function () { openPlanDialog(today); });
     $('plan-list').addEventListener('click', onTodayPlanClick);
+    $('next-up-open').addEventListener('click', function () { if (nextUpId) openItemDialog(today, nextUpId); });
+    $('next-up-tasks').addEventListener('change', onNextUpTask);
+    $('recap-hide').addEventListener('click', function () {
+      writePref(RECAP_HIDDEN_KEY, today);
+      renderRecapCard();
+      announce('Recap hidden until next Sunday. It’s also in Stats under This week → Recap.');
+      $('edit-goals').focus();
+    });
+    $('recap-card').addEventListener('click', onRecapCarry);
+    $('recap-dialog').addEventListener('click', onRecapCarry);
+    $('open-recap').addEventListener('click', openRecapDialog);
+    $('recap-dialog-close').addEventListener('click', function () { closeDialog('recap-dialog'); });
+    $('recap-dialog').addEventListener('close', function () { restoreFocus('recap-dialog', $('open-recap')); });
     setInterval(function () { if (!document.hidden && activeTab === 'today') renderDayPlan(); }, 60000);
     $('edit-goals').addEventListener('click', openManage);
     $('add-goal').addEventListener('click', function () { openGoalForm(null); });

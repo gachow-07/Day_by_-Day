@@ -241,6 +241,70 @@
     }).filter(function (s) { return s.activeDays > 0 || s.status === 'active'; });
   }
 
+  /**
+   * A recap of the 7 days ending `end` (inclusive): goals, workouts, time
+   * logged, and the day plan's checklists with what's still unfinished.
+   */
+  function weekRecap(state, end) {
+    var start = core.addDays(end, -6);
+    var t = windowTotals(state, end);
+    var goals = {};
+    var order = [];
+    var workouts = [];
+    var workoutsPlanned = 0;
+    var minutes = 0;
+    for (var d = start; d <= end; d = core.addDays(d, 1)) {
+      var rec = state.days[d];
+      if (!rec) continue;
+      rec.habits.forEach(function (e) {
+        var g = goals[e.id];
+        if (!g) { g = goals[e.id] = { id: e.id, name: e.name, flex: !!e.flex, target: e.target || 0, due: 0, done: 0, credit: 0 }; order.push(e.id); }
+        g.name = e.name;
+        var done = rec.done.indexOf(e.id) >= 0;
+        if (!e.flex) { g.due++; g.credit += core.entryCredit(rec, e); }
+        if (done) g.done++;
+        if (e.workout) workoutsPlanned++;
+        if (e.workout && done) workouts.push({ date: d, workout: e.workout, goal: e.name });
+        if (e.amount && e.amount.unit === 'min') minutes += core.loggedAmount(rec, e.id);
+      });
+    }
+    var planned = 0;
+    var tasks = 0;
+    var tasksDone = 0;
+    var unfinished = [];
+    for (var p = start; p <= end; p = core.addDays(p, 1)) {
+      core.agendaFor(state, p).forEach(function (it) {
+        if (it.skipped) return;
+        planned++;
+        core.itemDetails(state, p, it.id).tasks.forEach(function (task) {
+          tasks++;
+          if (task.done) tasksDone++;
+          else unfinished.push({ date: p, itemId: it.id, item: it.title, taskId: task.id, text: task.text });
+        });
+      });
+    }
+    return {
+      start: start,
+      end: end,
+      days: t.days,
+      locked: t.locked,
+      rate: t.rate,
+      goals: order.map(function (id) {
+        var g = goals[id];
+        g.rate = g.due ? Math.round((g.credit / g.due) * 100) : null;
+        delete g.credit;
+        return g;
+      }),
+      workouts: workouts,
+      workoutsPlanned: workoutsPlanned,
+      studyMinutes: minutes,
+      planned: planned,
+      tasks: tasks,
+      tasksDone: tasksDone,
+      unfinished: unfinished
+    };
+  }
+
   /** This week's progress for times-per-week goals shown today. */
   function weeklyProgress(state, today, weekStart, habitId) {
     var start = weekStartOf(today, weekStart);
@@ -493,6 +557,7 @@
     weekdayStrength: weekdayStrength,
     habitStats: habitStats,
     weeklyProgress: weeklyProgress,
+    weekRecap: weekRecap,
     habitGrid: habitGrid,
     amountAverage: amountAverage,
     insights: insights,

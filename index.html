@@ -10,8 +10,8 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="preload" href="fonts/instrument-sans-latin-var.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="fonts/jetbrains-mono-latin-var.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/styles.css?v=29">
-  <script src="js/theme.js?v=29"></script>
+  <link rel="stylesheet" href="css/styles.css?v=30">
+  <script src="js/theme.js?v=30"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -109,10 +109,25 @@
         <p id="hero-status" class="hero-status" aria-live="polite"></p>
       </section>
 
+      <section id="recap-card" class="recap section" aria-labelledby="recap-title" hidden>
+        <div class="section-head">
+          <h2 id="recap-title" class="section-title">Sunday recap</h2>
+          <button type="button" id="recap-hide" class="btn btn-ghost btn-sm">Hide</button>
+        </div>
+        <div id="recap-body" class="recap-body"></div>
+      </section>
+
       <section id="plan-card" class="day-plan section" aria-labelledby="plan-title" hidden>
         <div class="section-head">
           <h2 id="plan-title" class="section-title">Today’s plan</h2>
           <button type="button" id="plan-edit-today" class="btn btn-ghost btn-sm" aria-haspopup="dialog" aria-label="Edit today’s plan">Edit</button>
+        </div>
+        <div id="next-up" class="next-up" role="group" aria-labelledby="next-up-kicker next-up-open" hidden>
+          <p class="next-up-label"><span id="next-up-kicker" class="next-up-kicker"></span> <span id="next-up-when" class="next-up-when"></span></p>
+          <button type="button" id="next-up-open" class="next-up-title"></button>
+          <p id="next-up-time" class="next-up-time"></p>
+          <ul id="next-up-tasks" class="item-tasks next-up-tasks" aria-label="Checklist"></ul>
+          <p id="next-up-then" class="next-up-then"></p>
         </div>
         <div id="plan-list" class="tg is-day tg-today"></div>
         <p id="plan-empty" class="plan-empty" hidden></p>
@@ -180,7 +195,10 @@
       <section id="insights-card" class="insights section" aria-labelledby="insights-title" hidden>
         <div class="section-head">
           <h2 id="insights-title" class="section-title">This week</h2>
-          <button type="button" id="share-week" class="btn btn-ghost btn-sm">Share</button>
+          <div class="button-row">
+            <button type="button" id="open-recap" class="btn btn-ghost btn-sm" aria-haspopup="dialog">Recap</button>
+            <button type="button" id="share-week" class="btn btn-ghost btn-sm">Share</button>
+          </div>
         </div>
         <ul id="insight-list" class="insight-list"></ul>
       </section>
@@ -662,6 +680,14 @@
     </div>
   </dialog>
 
+  <dialog id="recap-dialog" class="dialog recap-dialog" aria-labelledby="recap-dialog-title">
+    <div class="sheet-head">
+      <h2 id="recap-dialog-title" class="dialog-title">Weekly recap</h2>
+      <button type="button" id="recap-dialog-close" class="icon-btn" aria-label="Close recap" data-tip="Close"><span data-icon="x"></span></button>
+    </div>
+    <div id="recap-dialog-body" class="recap-body"></div>
+  </dialog>
+
   <dialog id="item-dialog" class="dialog item-dialog" aria-labelledby="item-title" aria-describedby="item-when">
     <div class="item-head">
       <span class="item-swatch" id="item-swatch" aria-hidden="true"></span>
@@ -709,14 +735,14 @@
     </form>
   </dialog>
 
-  <script src="js/icons.js?v=29"></script>
-  <script src="js/core.js?v=29"></script>
-  <script src="js/stats.js?v=29"></script>
-  <script src="js/plans.js?v=29"></script>
-  <script src="js/storage.js?v=29"></script>
-  <script src="js/sync.js?v=29"></script>
-  <script src="js/firebase-config.js?v=29"></script>
-  <script src="js/cloud.js?v=29"></script>
-  <script src="js/app.js?v=29"></script>
+  <script src="js/icons.js?v=30"></script>
+  <script src="js/core.js?v=30"></script>
+  <script src="js/stats.js?v=30"></script>
+  <script src="js/plans.js?v=30"></script>
+  <script src="js/storage.js?v=30"></script>
+  <script src="js/sync.js?v=30"></script>
+  <script src="js/firebase-config.js?v=30"></script>
+  <script src="js/cloud.js?v=30"></script>
+  <script src="js/app.js?v=30"></script>
 </body>
 </html>
