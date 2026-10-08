@@ -1419,6 +1419,11 @@
       (tomorrowCount ? '' : ' Tap Plan on “' + planner.name + '” to plan tomorrow.');
   }
 
+  /** Checklist order: to-dos still open first, ticked ones at the bottom (each in the order added). */
+  function doneLast(tasks) {
+    return tasks.filter(function (t) { return !t.done; }).concat(tasks.filter(function (t) { return t.done; }));
+  }
+
   /* ---------------- Next up ---------------- */
 
   var nextUpId = null;
@@ -1455,7 +1460,7 @@
     var list = $('next-up-tasks');
     var focused = document.activeElement && list.contains(document.activeElement) ? document.activeElement.dataset.taskId : null;
     list.textContent = '';
-    core.itemDetails(state, today, it.id).tasks.forEach(function (t) {
+    doneLast(core.itemDetails(state, today, it.id).tasks).forEach(function (t) {
       var li = el('li', 'item-task' + (t.done ? ' is-done' : ''));
       var label = el('label', 'item-task-label');
       var cb = el('input', 'item-task-check');
@@ -1644,7 +1649,7 @@
     var list = $('item-tasks');
     var focusedTask = document.activeElement && list.contains(document.activeElement) ? document.activeElement.dataset.taskId : null;
     list.textContent = '';
-    d.tasks.forEach(function (t) {
+    doneLast(d.tasks).forEach(function (t) {
       var li = el('li', 'item-task' + (t.done ? ' is-done' : ''));
       var label = el('label', 'item-task-label');
       var box = el('input', 'item-task-check');
