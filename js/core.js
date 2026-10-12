@@ -24,7 +24,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  var SCHEMA_VERSION = 11;
+  var SCHEMA_VERSION = 12;
   var APP_ID = 'day-by-day';
   var DAY_MS = 24 * 60 * 60 * 1000;
   var MIN_YEAR = 1970;
@@ -44,6 +44,8 @@
   var MAX_NOTES_LENGTH = 2000;   // an item's description
   var MAX_TASKS = 50;            // checklist items per planned item
   var MAX_TASK_LENGTH = 120;
+  var MAX_TODOS = 200;
+  var MAX_IMPORTANT_DATES = 300;
   var MAX_PLAN_AHEAD = 366;      // days ahead a plan can be made (about a year)
   var MAX_WORKOUT_LENGTH = 40;
   var MIN_GOAL_MINUTES = 5;
@@ -176,6 +178,10 @@
    *     The plan for each day: one-off items, regular items skipped that
    *     day, items ticked off, and each item's description and checklist
    *     for that day (regular items get a fresh one each day).
+   *   todos: [{ id: 'd1', text, done, due }]  the Important tab's to-do list;
+   *     due is a date or null.
+   *   dates: [{ id: 'e1', title, date, yearly }]  important dates; yearly ones
+   *     (birthdays) come back every year.
    *   focus: { 'YYYY-MM-DD': 'text' }  daily intention (no longer edited;
    *     kept so older days still show it)
    *   settings: { weekStart: 0 | 1 }   Sunday or Monday
@@ -186,7 +192,7 @@
   var DAILY = { type: 'daily' };
 
   function emptyState() {
-    return { schemaVersion: SCHEMA_VERSION, habits: [], days: {}, focus: {}, agenda: {}, settings: { weekStart: 0 }, timer: null };
+    return { schemaVersion: SCHEMA_VERSION, habits: [], days: {}, focus: {}, agenda: {}, todos: [], dates: [], settings: { weekStart: 0 }, timer: null };
   }
 
   /** Day of week for a date key (0 = Sunday). */
@@ -629,6 +635,126 @@
       e.items = e.items.filter(function (it) { return it.id !== id; });
       if (e.items.length === before) return { error: 'unknown-item', message: 'That item is no longer in the plan.' };
       return {};
+    });
+  }
+
+  /* ---------------- Important: to-dos and dates ---------------- */
+
+  /** Add a to-do { text, due (date or null) } to the top of the list. */
+  function addTodo(state, text, due) {
+    var t = cleanPlanTitle(text);
+    if (!t) return failure(state, 'invalid-text', 'Type what you need to do.');
+    if (t.length > MAX_TASK_LENGTH) return failure(state, 'invalid-text', 'Keep it to ' + MAX_TASK_LENGTH + ' characters or fewer.');
+    if (due && !isValidDateKey(due)) return failure(state, 'invalid-date', 'Choose a valid due date.');
+    var list = state.todos || [];
+    if (list.length >= MAX_TODOS) return failure(state, 'too-many', 'Your list can have up to ' + MAX_TODOS + ' to-dos. Clear some done ones first.');
+    var next = clone(state);
+    next.todos = clone(list);
+    var id = nextItemId(next.todos, 'd');
+    next.todos.unshift({ id: id, text: t, done: false, due: due || null });
+    return result(next, { id: id });
+  }
+
+  function editTodos(state, id, fn) {
+    var list = state.todos || [];
+    if (!list.some(function (t) { return t.id === id; })) return failure(state, 'unknown-todo', 'That to-do is gone.');
+    var next = clone(state);
+    next.todos = clone(list);
+    fn(next.todos.filter(function (t) { return t.id === id; })[0], next);
+    return result(next, {});
+  }
+
+  function setTodoDone(state, id, done) {
+    return editTodos(state, id, function (t) { t.done = !!done; });
+  }
+
+  /** Change a to-do's text and/or due date ({ text, due }). */
+  function updateTodo(state, id, changes) {
+    var c = changes || {};
+    if (c.text !== undefined) {
+      var t = cleanPlanTitle(c.text);
+      if (!t) return failure(state, 'invalid-text', 'Type what you need to do.');
+      if (t.length > MAX_TASK_LENGTH) return failure(state, 'invalid-text', 'Keep it to ' + MAX_TASK_LENGTH + ' characters or fewer.');
+    }
+    if (c.due && !isValidDateKey(c.due)) return failure(state, 'invalid-date', 'Choose a valid due date.');
+    return editTodos(state, id, function (todo) {
+      if (c.text !== undefined) todo.text = cleanPlanTitle(c.text);
+      if (c.due !== undefined) todo.due = c.due || null;
+    });
+  }
+
+  function removeTodo(state, id) {
+    return editTodos(state, id, function (t, next) { next.todos = next.todos.filter(function (x) { return x.id !== id; }); });
+  }
+
+  /** Remove every finished to-do. Returns { count }. */
+  function clearDoneTodos(state) {
+    var list = state.todos || [];
+    var count = list.filter(function (t) { return t.done; }).length;
+    if (!count) return result(state, { count: 0, unchanged: true });
+    var next = clone(state);
+    next.todos = list.filter(function (t) { return !t.done; }).map(clone);
+    return result(next, { count: count });
+  }
+
+  /** Add an important date { title, date, yearly }. */
+  function addImportantDate(state, item) {
+    var title = cleanPlanTitle(item && item.title);
+    if (!title) return failure(state, 'invalid-title', 'Name the date, like “Midterm” or “Mom’s birthday”.');
+    if (title.length > MAX_PLAN_TITLE) return failure(state, 'invalid-title', 'Keep it to ' + MAX_PLAN_TITLE + ' characters or fewer.');
+    if (!isValidDateKey(item.date)) return failure(state, 'invalid-date', 'Choose a date.');
+    var list = state.dates || [];
+    if (list.length >= MAX_IMPORTANT_DATES) return failure(state, 'too-many', 'You can keep up to ' + MAX_IMPORTANT_DATES + ' important dates.');
+    var next = clone(state);
+    next.dates = clone(list);
+    var id = nextItemId(next.dates, 'e');
+    next.dates.push({ id: id, title: title, date: item.date, yearly: !!item.yearly });
+    return result(next, { id: id });
+  }
+
+  function removeImportantDate(state, id) {
+    var list = state.dates || [];
+    if (!list.some(function (e) { return e.id === id; })) return failure(state, 'unknown-date', 'That date is gone.');
+    var next = clone(state);
+    next.dates = list.filter(function (e) { return e.id !== id; }).map(clone);
+    return result(next, {});
+  }
+
+  /** A yearly date in `year` (Feb 29 falls on Feb 28 in other years). */
+  function inYear(date, year) {
+    var md = date.slice(5);
+    var key = pad(year, 4) + '-' + md;
+    return isValidDateKey(key) ? key : pad(year, 4) + '-02-28';
+  }
+
+  /** The next time an important date comes round, on or after `today` (null when a one-off is past). */
+  function nextOccurrence(e, today) {
+    if (!e.yearly) return e.date >= today ? e.date : null;
+    if (e.date > today) return e.date;
+    var y = Number(today.slice(0, 4));
+    var d = inYear(e.date, y);
+    return d >= today ? d : inYear(e.date, y + 1);
+  }
+
+  /** Important dates from `today` on, soonest first: [{ id, title, date, yearly, days, years }]. */
+  function upcomingDates(state, today, limit) {
+    var out = [];
+    (state.dates || []).forEach(function (e) {
+      var d = nextOccurrence(e, today);
+      if (!d) return;
+      var item = { id: e.id, title: e.title, date: d, yearly: e.yearly, days: daysBetween(today, d) };
+      if (e.yearly && d !== e.date) item.years = Number(d.slice(0, 4)) - Number(e.date.slice(0, 4));
+      out.push(item);
+    });
+    out.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+    return limit ? out.slice(0, limit) : out;
+  }
+
+  /** Important dates falling on `date` (yearly ones in any year from their first). */
+  function datesOn(state, date) {
+    return (state.dates || []).filter(function (e) {
+      if (!e.yearly) return e.date === date;
+      return date >= e.date && inYear(e.date, Number(date.slice(0, 4))) === date;
     });
   }
 
@@ -1659,6 +1785,32 @@
         if (!isValidDateKey(d) || typeof t !== 'string' || !t.trim() || t.length > MAX_FOCUS_LENGTH) err('focus[' + d + '] is invalid.');
       });
     }
+    if (!Array.isArray(s.todos) || s.todos.length > MAX_TODOS) {
+      err('todos must be a list.');
+    } else {
+      var todoIds = [];
+      s.todos.forEach(function (t, i) {
+        if (!isPlainObject(t) || Object.keys(t).length !== 4 || typeof t.id !== 'string' || !/^d\d{1,4}$/.test(t.id) ||
+            todoIds.indexOf(t.id) >= 0 || typeof t.text !== 'string' || !t.text || t.text !== cleanPlanTitle(t.text) ||
+            t.text.length > MAX_TASK_LENGTH || typeof t.done !== 'boolean' || (t.due !== null && !isValidDateKey(t.due))) {
+          err('todos[' + i + '] is invalid.');
+        }
+        if (isPlainObject(t)) todoIds.push(t.id);
+      });
+    }
+    if (!Array.isArray(s.dates) || s.dates.length > MAX_IMPORTANT_DATES) {
+      err('dates must be a list.');
+    } else {
+      var dateIds = [];
+      s.dates.forEach(function (e, i) {
+        if (!isPlainObject(e) || Object.keys(e).length !== 4 || typeof e.id !== 'string' || !/^e\d{1,4}$/.test(e.id) ||
+            dateIds.indexOf(e.id) >= 0 || typeof e.title !== 'string' || !e.title || e.title !== cleanPlanTitle(e.title) ||
+            e.title.length > MAX_PLAN_TITLE || !isValidDateKey(e.date) || typeof e.yearly !== 'boolean') {
+          err('dates[' + i + '] is invalid.');
+        }
+        if (isPlainObject(e)) dateIds.push(e.id);
+      });
+    }
     if (!isPlainObject(s.agenda)) {
       err('agenda must be an object keyed by date.');
     } else {
@@ -1998,6 +2150,16 @@
       return next;
     },
 
+    11: function v11ToV12(old) {
+      // Adds the Important tab: a to-do list and important dates.
+      if (!isPlainObject(old)) throw new Error('Saved data is not an object.');
+      var next = clone(old);
+      next.schemaVersion = 12;
+      if (next.todos === undefined) next.todos = [];
+      if (next.dates === undefined) next.dates = [];
+      return next;
+    },
+
     10: function v10ToV11(old) {
       // Adds descriptions and checklists to planned items; existing data is unchanged.
       if (!isPlainObject(old)) throw new Error('Saved data is not an object.');
@@ -2047,7 +2209,7 @@
       return { ok: false, error: 'invalid', message: 'The data could not be upgraded: ' + e.message };
     }
     // Keep only the stored fields; exports also carry computed ones.
-    var state = { schemaVersion: data.schemaVersion, habits: data.habits, days: data.days, focus: data.focus, agenda: data.agenda, settings: data.settings, timer: data.timer };
+    var state = { schemaVersion: data.schemaVersion, habits: data.habits, days: data.days, focus: data.focus, agenda: data.agenda, todos: data.todos, dates: data.dates, settings: data.settings, timer: data.timer };
     var errors = validateState(state);
     if (errors.length) {
       return { ok: false, error: 'invalid', message: 'The data is damaged or incomplete: ' + errors.slice(0, 3).join(' '), errors: errors };
@@ -2096,6 +2258,8 @@
       days: clone(state.days),
       focus: clone(state.focus),
       agenda: clone(state.agenda || {}),
+      todos: clone(state.todos || []),
+      dates: clone(state.dates || []),
       settings: clone(state.settings),
       timer: clone(state.timer === undefined ? null : state.timer),
       dailyRecords: dailyRecords
@@ -2171,6 +2335,16 @@
     setItemTaskDone: setItemTaskDone,
     removeItemTask: removeItemTask,
     carryOverTasks: carryOverTasks,
+    addTodo: addTodo,
+    setTodoDone: setTodoDone,
+    updateTodo: updateTodo,
+    removeTodo: removeTodo,
+    clearDoneTodos: clearDoneTodos,
+    addImportantDate: addImportantDate,
+    removeImportantDate: removeImportantDate,
+    nextOccurrence: nextOccurrence,
+    upcomingDates: upcomingDates,
+    datesOn: datesOn,
     MAX_NOTES_LENGTH: MAX_NOTES_LENGTH,
     MAX_TASK_LENGTH: MAX_TASK_LENGTH,
     setAgendaSkip: setAgendaSkip,

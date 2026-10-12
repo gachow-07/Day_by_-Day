@@ -19,7 +19,7 @@
 
   var SVG_NS = 'http://www.w3.org/2000/svg';
   var RANGES = { '7': 7, '30': 30, '90': 90, all: 'all' };
-  var TABS = ['today', 'stats', 'settings'];
+  var TABS = ['today', 'important', 'stats', 'settings'];
   var NOTIFY_KEY = 'day-by-day.notify';
   var REMINDED_KEY = 'day-by-day.reminded';
   var RECAP_HIDDEN_KEY = 'day-by-day.recap-hidden';   // the Sunday the recap card was hidden
@@ -322,6 +322,7 @@
       // file:// pages may refuse; the tab still works.
     }
     updateTitle();
+    if (activeTab === 'important') renderImportant();
     if (activeTab === 'stats') renderStats();
     if (activeTab === 'settings') renderSettings();
     window.scrollTo(0, 0);
@@ -924,7 +925,7 @@
   }
 
   function updateTitle() {
-    var base = (activeTab === 'today' ? 'Today' : activeTab === 'stats' ? 'Stats' : 'Settings') + ' · Day by Day';
+    var base = { today: 'Today', important: 'Important', stats: 'Stats', settings: 'Settings' }[activeTab] + ' · Day by Day';
     if (!state.timer) { document.title = base; return; }
     var st = core.timerStatus(state.timer, Date.now());
     var shown = state.timer.mode === 'focus' ? countdown(st.phaseLeftMs) : st.elapsedMs;
@@ -3872,8 +3873,298 @@
     timerDisplay();
     // Don't rebuild the editor under a drag.
     if ($('goals-dialog').open && !drag) renderManage();
+    if (activeTab === 'important') renderImportant();
     if (activeTab === 'stats') renderStats();
     if (activeTab === 'settings') renderSettings();
+  }
+
+  /* ---------------- Important: to-dos and important dates ---------------- */
+
+  var datesMonth = null; // first day of the month shown
+  var datesSelected = null;
+
+  /** "Today", "Tomorrow", "in 5 days", "Overdue". */
+  function dueText(date) {
+    var n = core.daysBetween(today, date);
+    if (n < 0) return 'Overdue · ' + formatDate(date, 'short');
+    if (n === 0) return 'Today';
+    if (n === 1) return 'Tomorrow';
+    if (n < 7) return formatDate(date, 'dowShort');
+    return formatDate(date, 'short');
+  }
+
+  function countdownText(days) {
+    if (days === 0) return 'Today';
+    if (days === 1) return 'Tomorrow';
+    if (days >= 60) return 'in ' + Math.round(days / 30.44) + ' months';
+    return 'in ' + days + ' days';
+  }
+
+  /** Open to-dos by due date (soonest first, undated after), done ones last. */
+  function sortedTodos() {
+    var list = state.todos || [];
+    var open = list.filter(function (t) { return !t.done; });
+    var dated = open.filter(function (t) { return t.due; }).sort(function (a, b) { return a.due < b.due ? -1 : a.due > b.due ? 1 : 0; });
+    return dated.concat(open.filter(function (t) { return !t.due; }), list.filter(function (t) { return t.done; }));
+  }
+
+  function todosDueOn(date) {
+    return (state.todos || []).filter(function (t) { return t.due === date; });
+  }
+
+  function renderImportant() {
+    var todos = state.todos || [];
+    var open = todos.filter(function (t) { return !t.done; });
+    var done = todos.length - open.length;
+    var next = core.upcomingDates(state, today, 1)[0];
+    $('important-sub').textContent = (open.length ? plural(open.length, 'to-do') + ' left' : 'All caught up') +
+      (next ? ' · ' + next.title + ' ' + countdownText(next.days).toLowerCase() : '');
+    $('todo-count').textContent = todos.length ? done + '/' + todos.length : '';
+
+    // To-do list
+    var list = $('todo-list');
+    var focused = document.activeElement && list.contains(document.activeElement)
+      ? (document.activeElement.dataset.todoId || document.activeElement.dataset.todoRemove) : null;
+    var focusRemove = document.activeElement && document.activeElement.dataset.todoRemove;
+    list.textContent = '';
+    sortedTodos().forEach(function (t) {
+      var li = el('li', 'item-task' + (t.done ? ' is-done' : ''));
+      var label = el('label', 'item-task-label');
+      var cb = el('input', 'item-task-check');
+      cb.type = 'checkbox';
+      cb.checked = t.done;
+      cb.dataset.todoId = t.id;
+      label.appendChild(cb);
+      var mark = el('span', 'plan-box');
+      mark.setAttribute('aria-hidden', 'true');
+      mark.appendChild(icon('check', 14));
+      label.appendChild(mark);
+      label.appendChild(el('span', 'item-task-text', t.text));
+      if (t.due) {
+        var late = !t.done && t.due < today;
+        var chip = el('span', 'todo-due-chip' + (late ? ' is-late' : t.due === today && !t.done ? ' is-today' : ''), dueText(t.due));
+        label.appendChild(chip);
+      }
+      li.appendChild(label);
+      var rm = el('button', 'icon-btn item-task-remove');
+      rm.type = 'button';
+      rm.dataset.todoRemove = t.id;
+      rm.setAttribute('aria-label', 'Remove ' + t.text);
+      rm.dataset.tip = 'Remove';
+      rm.appendChild(icon('x', 16));
+      li.appendChild(rm);
+      list.appendChild(li);
+    });
+    list.hidden = !todos.length;
+    $('todo-empty').hidden = !!todos.length;
+    $('todo-clear').hidden = !done;
+    $('todo-clear').textContent = 'Clear done (' + done + ')';
+    if (focused) {
+      var again = list.querySelector(focusRemove ? '[data-todo-remove="' + focused + '"]' : '[data-todo-id="' + focused + '"]');
+      if (again) again.focus();
+    }
+
+    // Calendar
+    if (!datesSelected) datesSelected = today;
+    if (!datesMonth) datesMonth = datesSelected.slice(0, 8) + '01';
+    var y = Number(datesMonth.slice(0, 4));
+    var m = Number(datesMonth.slice(5, 7));
+    $('dates-month').textContent = formatMonth(y, m);
+    var dow = $('dates-dow');
+    if (!dow.childNodes.length) {
+      var ws = weekStart();
+      for (var k = 0; k < 7; k++) dow.appendChild(el('span', 'cal-dow', dayShort((ws + k) % 7).slice(0, 2)));
+    }
+    var grid = $('dates-grid');
+    var focusedDay = document.activeElement && grid.contains(document.activeElement) ? document.activeElement.dataset.importantDate : null;
+    grid.textContent = '';
+    var lead = (core.dayOfWeek(datesMonth) - weekStart() + 7) % 7;
+    for (var j = 0; j < lead; j++) grid.appendChild(el('span', 'cal-cell is-outside'));
+    var end = String(m === 12 ? y + 1 : y).padStart(4, '0') + '-' + String(m === 12 ? 1 : m + 1).padStart(2, '0') + '-01';
+    for (var d = datesMonth; d < end; d = core.addDays(d, 1)) {
+      var events = core.datesOn(state, d);
+      var due = todosDueOn(d).filter(function (t) { return !t.done; });
+      var cell = el('button', 'cal-cell plan-cell important-cell');
+      cell.type = 'button';
+      cell.dataset.importantDate = d;
+      if (d === today) { cell.classList.add('is-today'); cell.setAttribute('aria-current', 'date'); }
+      if (d === datesSelected) cell.classList.add('is-selected');
+      cell.setAttribute('aria-pressed', String(d === datesSelected));
+      if (d < today) cell.classList.add('is-past');
+      var parts = events.map(function (e) { return e.title; });
+      if (due.length) parts.push(plural(due.length, 'to-do') + ' due');
+      cell.setAttribute('aria-label', formatDate(d, 'long') + (parts.length ? ': ' + parts.join(', ') : ''));
+      cell.appendChild(el('span', 'plan-cell-num', String(Number(d.slice(8)))));
+      if (events.length || due.length) {
+        var marks = el('span', 'important-marks');
+        marks.setAttribute('aria-hidden', 'true');
+        if (events.length) marks.appendChild(el('span', 'important-mark is-date'));
+        if (due.length) marks.appendChild(el('span', 'important-mark is-due'));
+        cell.appendChild(marks);
+      }
+      grid.appendChild(cell);
+    }
+    if (focusedDay) {
+      var day = grid.querySelector('[data-important-date="' + focusedDay + '"]');
+      if (day) day.focus();
+    }
+
+    // The selected day
+    $('dates-day-title').textContent = formatDate(datesSelected, 'long') + (datesSelected === today ? ' · Today' : '');
+    var dayList = $('dates-day-list');
+    dayList.textContent = '';
+    core.datesOn(state, datesSelected).forEach(function (e) {
+      var li = el('li', 'plan-edit-row');
+      var text = el('span', 'plan-edit-text-static');
+      text.appendChild(el('span', 'important-star', '★'));
+      text.appendChild(el('span', 'plan-title', e.title));
+      if (e.yearly) text.appendChild(el('span', 'plan-tasks', 'Every year'));
+      li.appendChild(text);
+      var rm = el('button', 'icon-btn');
+      rm.type = 'button';
+      rm.dataset.dateRemove = e.id;
+      rm.setAttribute('aria-label', 'Remove ' + e.title);
+      rm.dataset.tip = 'Remove';
+      rm.appendChild(icon('x', 16));
+      li.appendChild(rm);
+      dayList.appendChild(li);
+    });
+    todosDueOn(datesSelected).forEach(function (t) {
+      var li = el('li', 'plan-edit-row is-todo' + (t.done ? ' is-skipped' : ''));
+      var text = el('span', 'plan-edit-text-static');
+      text.appendChild(el('span', 'plan-tasks', 'To-do'));
+      text.appendChild(el('span', 'plan-title', t.text));
+      li.appendChild(text);
+      dayList.appendChild(li);
+    });
+    if (!dayList.children.length) dayList.appendChild(el('li', 'recap-empty', 'Nothing on this day.'));
+    if (document.activeElement !== $('date-date')) $('date-date').value = datesSelected;
+
+    // Coming up
+    var up = core.upcomingDates(state, today, 8);
+    var upList = $('dates-upcoming');
+    upList.textContent = '';
+    up.forEach(function (u) {
+      var li = el('li');
+      var b = el('button', 'dates-up-row');
+      b.type = 'button';
+      b.dataset.importantJump = u.date;
+      b.appendChild(el('span', 'dates-up-when' + (u.days <= 7 ? ' is-soon' : ''), countdownText(u.days)));
+      var main = el('span', 'dates-up-main');
+      main.appendChild(el('span', 'plan-title', u.title));
+      main.appendChild(el('span', 'dates-up-date', formatDate(u.date, 'dowShort') + ', ' + formatDate(u.date, 'short') +
+        (u.years ? ' · ' + plural(u.years, 'year') : '')));
+      b.appendChild(main);
+      b.setAttribute('aria-label', u.title + ', ' + formatDate(u.date, 'long') + ', ' + countdownText(u.days).toLowerCase() + '. Show in calendar');
+      li.appendChild(b);
+      upList.appendChild(li);
+    });
+    upList.hidden = !up.length;
+    $('dates-empty').hidden = !!up.length;
+  }
+
+  function importantError(id, message) {
+    $(id).textContent = message || '';
+    $(id).hidden = !message;
+  }
+
+  function onTodoAdd(event) {
+    event.preventDefault();
+    if (holdForAccount()) return;
+    var r = core.addTodo(state, $('todo-input').value, $('todo-due').value || null);
+    if (!r.ok) { importantError('todo-error', r.message); $('todo-input').focus(); return; }
+    if (!commit(r.state)) return;
+    importantError('todo-error', '');
+    announce('Added ' + core.cleanName($('todo-input').value) + '.');
+    $('todo-input').value = '';
+    $('todo-due').value = '';
+    $('todo-input').focus();
+  }
+
+  function onTodoChange(event) {
+    var cb = event.target.closest('[data-todo-id]');
+    if (!cb) return;
+    if (holdForAccount()) { renderImportant(); return; }
+    var r = core.setTodoDone(state, cb.dataset.todoId, cb.checked);
+    if (!r.ok) { announce(r.message); renderImportant(); return; }
+    commit(r.state);
+  }
+
+  function onTodoRemove(event) {
+    var b = event.target.closest('[data-todo-remove]');
+    if (!b || holdForAccount()) return;
+    var li = b.closest('li');
+    var next = li.nextElementSibling || li.previousElementSibling;
+    var nextId = next ? next.querySelector('[data-todo-remove]').dataset.todoRemove : null;
+    var text = li.querySelector('.item-task-text').textContent;
+    var r = core.removeTodo(state, b.dataset.todoRemove);
+    if (!r.ok || !commit(r.state)) return;
+    announce('Removed ' + text + '.');
+    var f = nextId && $('todo-list').querySelector('[data-todo-remove="' + nextId + '"]');
+    (f || $('todo-input')).focus();
+  }
+
+  function onTodoClear() {
+    if (holdForAccount()) return;
+    var r = core.clearDoneTodos(state);
+    if (!r.ok || r.unchanged || !commit(r.state)) return;
+    announce('Cleared ' + plural(r.count, 'finished to-do') + '.');
+    $('todo-input').focus();
+  }
+
+  function selectImportantDay(date, focusIt) {
+    datesSelected = date;
+    datesMonth = date.slice(0, 8) + '01';
+    importantError('date-error', '');
+    renderImportant();
+    if (focusIt) {
+      var cell = $('dates-grid').querySelector('[data-important-date="' + date + '"]');
+      if (cell) cell.focus();
+    }
+  }
+
+  function onDatesClick(event) {
+    var nav = event.target.closest('#dates-prev, #dates-next');
+    if (nav) {
+      var y = Number(datesMonth.slice(0, 4));
+      var m = Number(datesMonth.slice(5, 7)) - 1 + (nav.id === 'dates-next' ? 1 : -1);
+      y += Math.floor(m / 12);
+      m = ((m % 12) + 12) % 12;
+      datesMonth = String(y).padStart(4, '0') + '-' + String(m + 1).padStart(2, '0') + '-01';
+      renderImportant();
+      return;
+    }
+    var day = event.target.closest('[data-important-date]');
+    if (day) { selectImportantDay(day.dataset.importantDate, true); return; }
+    var jump = event.target.closest('[data-important-jump]');
+    if (jump) { selectImportantDay(jump.dataset.importantJump, true); return; }
+    var rm = event.target.closest('[data-date-remove]');
+    if (rm && !holdForAccount()) {
+      var e = (state.dates || []).filter(function (x) { return x.id === rm.dataset.dateRemove; })[0];
+      var r = core.removeImportantDate(state, rm.dataset.dateRemove);
+      if (!r.ok || !commit(r.state)) return;
+      if (e) announce('Removed ' + e.title + '.');
+      $('date-title').focus();
+    }
+  }
+
+  function onDateAdd(event) {
+    event.preventDefault();
+    if (holdForAccount()) return;
+    var item = { title: $('date-title').value, date: $('date-date').value, yearly: $('date-yearly').checked };
+    var r = core.addImportantDate(state, item);
+    if (!r.ok) {
+      importantError('date-error', r.message);
+      (r.error === 'invalid-date' ? $('date-date') : $('date-title')).focus();
+      return;
+    }
+    if (!commit(r.state)) return;
+    importantError('date-error', '');
+    $('date-title').value = '';
+    $('date-yearly').checked = false;
+    selectImportantDay(item.date, false);
+    announce('Added ' + core.cleanName(item.title) + ' on ' + formatDate(item.date, 'long') + '.');
+    $('date-title').focus();
   }
 
   /* ---------------- Export / import / reset ---------------- */
@@ -4252,6 +4543,12 @@
     $('first-goal-form').addEventListener('submit', onFirstGoal);
     $('plan-edit-today').addEventListener('click', function () { openPlanDialog(today); });
     $('plan-list').addEventListener('click', onTodayPlanClick);
+    $('todo-form').addEventListener('submit', onTodoAdd);
+    $('todo-list').addEventListener('change', onTodoChange);
+    $('todo-list').addEventListener('click', onTodoRemove);
+    $('todo-clear').addEventListener('click', onTodoClear);
+    $('date-form').addEventListener('submit', onDateAdd);
+    $('panel-important').addEventListener('click', onDatesClick);
     $('next-up-open').addEventListener('click', function () { if (nextUpId) openItemDialog(today, nextUpId); });
     $('next-up-tasks').addEventListener('change', onNextUpTask);
     $('recap-hide').addEventListener('click', function () {

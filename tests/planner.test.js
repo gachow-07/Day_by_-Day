@@ -245,5 +245,5 @@ test('damaged details are rejected, and details export and import', () => {
   v10.schemaVersion = 10;
   const m = core.migrate(v10);
   assert.ok(m.ok, m.message);
-  assert.equal(m.state.schemaVersion, 11);
+  assert.equal(m.state.schemaVersion, core.SCHEMA_VERSION);
 });

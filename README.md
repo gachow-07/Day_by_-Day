@@ -108,6 +108,13 @@ Make a goal your day planner by turning on **Plan my next day** in its form (a n
 
 The old **Focus** line has been removed. Focus text saved on earlier days is kept and still shows in day details and exports.
 
+### Important
+
+The **Important** tab (right under Today) keeps the things that aren't tied to one day:
+
+- **To do:** add things you need to do, with an optional due date. Overdue ones are flagged red and ones due today amber; open to-dos are sorted by due date (undated after), and ticked ones move to the bottom. **Clear done** removes the finished ones.
+- **Important dates:** a month calendar with dots on important dates (green) and to-do due dates (amber). Tap a day to see what's on it; add a date with a name, the day, and **Every year** for birthdays and anniversaries (a Feb 29 date falls on Feb 28 in other years). **Coming up** lists the next ones with a countdown ("in 8 days", "in 5 months"), and how many years for yearly dates; tap one to jump to it in the calendar.
+
 ### Sunday recap
 
 On Sundays a **Sunday recap** card appears on Today, covering the seven days ending that Sunday: days Locked In, the share of goals done, workouts done out of planned, time logged on time goals, checklist to-dos done, each goal's progress, the workouts you did, and the to-dos still unfinished. **Carry over to Monday** puts the unfinished ones into Monday's plan as one "Leftover to-dos" item with a checklist. **Hide** hides the card until next Sunday (on that device). Any day, **Stats → This week → Recap** shows the same recap for the past 7 days.
@@ -150,6 +157,7 @@ The tests in `tests/` cover:
 - water goals: logging, units and validation, cups and gallons stored as fl oz, ml/oz conversion, the daily average, and the v6 → 7 migration
 - partly done and time goals: logging in pieces, reaching the goal, undo, ticking and unticking a timed goal, partial credit in completion rates without Locked In or streaks, calendar and grid states, switching a goal to or from timed, validation, the v5 → 6 migration, and export/import
 - workout splits: rotation on due days only and over many weeks, times-per-week splits, swapping a workout (and swapping back), re-anchoring when the schedule changes, validation, the v4 → 5 migration, weekly plans (schedule from the plan, swaps that last one week, workouts not planned later that week, swapping back, a Monday week start, validation, import and the v8 → 9 migration), and workouts in day details and exports
+- the Important tab: to-dos (adding, ticking, editing, removing, clearing done ones) and important dates (one-off and yearly, Feb 29, countdowns, which dates fall on a day), validation, export/import and the v11 → 12 migration
 - the weekly recap (goals, workouts, time logged, checklists and unfinished to-dos over 7 days) and carrying to-dos over
 - the day planner: regular schedule ids and validation, each day's plan by weekday and time, planning only today or up to a year ahead, skipping a regular item for one day, removing and editing items, descriptions and checklists (per day, also on past days), ticking off today's plan, planner goals not tracking amounts or workouts, paused planners, damaged data, the v9 → 10 migration, and export/import
 - plan entitlements (Early access grants everything; Free and Pro limits)
@@ -202,7 +210,7 @@ If you are not signed in, everything lives in this browser only. Clearing site d
 
 ### Saved-data format and migrations
 
-Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaVersion` field. The current version is **11**:
+Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaVersion` field. The current version is **12**:
 
 ```js
 {
@@ -247,6 +255,8 @@ Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaV
                                             tasks: [{ id: 't1', text: 'Fill in the form', done: true }] } } } },
                     // the plan for each day: one-off items, regular items skipped that day, items ticked off,
                     // and each item's description and checklist for that day
+  todos: [{ id: 'd1', text: 'Pay rent', done: false, due: '2026-10-14' }],   // due: date or null
+  dates: [{ id: 'e1', title: 'Mom’s birthday', date: '1970-03-04', yearly: true }],
   focus: { '2026-09-01': 'Finish the essay draft' },   // daily intention from older versions (no longer edited)
   settings: { weekStart: 0 },                          // 0 = Sunday, 1 = Monday
   timer: null   // or the running study timer: { habitId, date (the day it started), startedAt, pausedAt,
@@ -256,6 +266,7 @@ Data is stored under the `localStorage` key `day-by-day` as JSON with a `schemaV
 
 Streaks and all statistics are calculated from `days` (see `js/stats.js`); no counters are stored.
 
+- **Version 11 → 12:** adds the Important tab's `todos: []` and `dates: []`. Nothing else changes. The original is first copied to `day-by-day.backup.v11.<timestamp>`.
 - **Version 10 → 11:** adds descriptions and checklists to planned items (`agenda[date].details`). Existing data is unchanged; only the version number changes. The original is first copied to `day-by-day.backup.v10.<timestamp>`.
 - **Version 9 → 10:** adds the day planner: goals gain `planner: null`, and an empty `agenda` is added. Nothing else changes. The original is first copied to `day-by-day.backup.v9.<timestamp>`.
 - **Version 8 → 9:** adds weekly workout plans (`split.type: 'weekly'`). Existing data is unchanged; only the version number changes. The original is first copied to `day-by-day.backup.v8.<timestamp>`.
