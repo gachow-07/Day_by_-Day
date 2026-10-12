@@ -4528,14 +4528,11 @@ button.cal-cell:hover {
 }
 
 .todo-add #todo-input {
-  flex: 1 1 100%;
+  flex: 1 1 10rem;
+  width: auto;
   min-width: 0;
 }
 
-.todo-add .todo-due {
-  flex: 0 0 auto;
-  width: 10rem;
-}
 
 .todo-list {
   margin-top: var(--s-2);
@@ -4691,4 +4688,53 @@ button.cal-cell:hover {
 #dates-grid .cal-cell.is-outside,
 #plan-month-grid .cal-cell.is-outside {
   height: auto;
+}
+
+/* A to-do's due date: chip, add button or picker */
+.todo-date {
+  display: inline-flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+button.todo-due-chip {
+  margin-left: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+button.todo-due-chip:hover {
+  border-color: var(--text-2);
+}
+
+button.todo-due-chip:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.todo-date-add {
+  color: var(--text-3);
+}
+
+.todo-date-add:hover {
+  color: var(--accent);
+}
+
+.todo-date-input {
+  width: 9.5rem;
+}
+
+.item-task:has(.todo-date-input) {
+  flex-wrap: wrap;
+  padding-bottom: 4px;
+}
+
+.item-task:has(.todo-date-input) .todo-date {
+  order: 3;
+  flex-basis: 100%;
+  justify-content: flex-start;
+  padding-left: calc(var(--s-3) + 20px + var(--s-3));
 }

@@ -112,7 +112,7 @@ The old **Focus** line has been removed. Focus text saved on earlier days is kep
 
 The **Important** tab (right under Today) keeps the things that aren't tied to one day:
 
-- **To do:** add things you need to do, with an optional due date. Overdue ones are flagged red and ones due today amber; open to-dos are sorted by due date (undated after), and ticked ones move to the bottom. **Clear done** removes the finished ones.
+- **To do:** a plain checklist. Type something ("Complete enrollment") and add it; give it a due date whenever you like with the calendar button on the to-do, tap the date to change it, or choose **No date** to remove it. Overdue ones are flagged red and ones due today amber; open to-dos are sorted by due date (undated after), and ticked ones move to the bottom. **Clear done** removes the finished ones.
 - **Important dates:** a month calendar with dots on important dates (green) and to-do due dates (amber). Tap a day to see what's on it; add a date with a name, the day, and **Every year** for birthdays and anniversaries (a Feb 29 date falls on Feb 28 in other years). **Coming up** lists the next ones with a countdown ("in 8 days", "in 5 months"), and how many years for yearly dates; tap one to jump to it in the calendar.
 
 ### Sunday recap

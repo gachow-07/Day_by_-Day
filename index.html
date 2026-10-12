@@ -10,8 +10,8 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="preload" href="fonts/instrument-sans-latin-var.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="fonts/jetbrains-mono-latin-var.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/styles.css?v=34">
-  <script src="js/theme.js?v=34"></script>
+  <link rel="stylesheet" href="css/styles.css?v=35">
+  <script src="js/theme.js?v=35"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -175,11 +175,10 @@
           </div>
           <form id="todo-form" class="todo-add" novalidate>
             <label for="todo-input" class="visually-hidden">New to-do</label>
-            <input id="todo-input" class="input" type="text" maxlength="120" autocomplete="off" placeholder="Add something you need to do" aria-describedby="todo-error">
-            <label for="todo-due" class="visually-hidden">Due date (optional)</label>
-            <input id="todo-due" class="input input-sm todo-due" type="date">
-            <button type="submit" class="btn btn-primary btn-sm">Add</button>
+            <input id="todo-input" class="input" type="text" maxlength="120" autocomplete="off" placeholder="Add something, like Complete enrollment" aria-describedby="todo-error todo-hint">
+            <button type="submit" class="btn btn-primary">Add</button>
           </form>
+          <p id="todo-hint" class="field-hint">Add a due date any time with the calendar button on a to-do.</p>
           <p id="todo-error" class="field-error" role="alert" hidden></p>
           <ul id="todo-list" class="item-tasks todo-list" aria-labelledby="todo-title"></ul>
           <p id="todo-empty" class="plan-empty" hidden>Nothing to do. Add something above.</p>
@@ -798,14 +797,14 @@
     </form>
   </dialog>
 
-  <script src="js/icons.js?v=34"></script>
-  <script src="js/core.js?v=34"></script>
-  <script src="js/stats.js?v=34"></script>
-  <script src="js/plans.js?v=34"></script>
-  <script src="js/storage.js?v=34"></script>
-  <script src="js/sync.js?v=34"></script>
-  <script src="js/firebase-config.js?v=34"></script>
-  <script src="js/cloud.js?v=34"></script>
-  <script src="js/app.js?v=34"></script>
+  <script src="js/icons.js?v=35"></script>
+  <script src="js/core.js?v=35"></script>
+  <script src="js/stats.js?v=35"></script>
+  <script src="js/plans.js?v=35"></script>
+  <script src="js/storage.js?v=35"></script>
+  <script src="js/sync.js?v=35"></script>
+  <script src="js/firebase-config.js?v=35"></script>
+  <script src="js/cloud.js?v=35"></script>
+  <script src="js/app.js?v=35"></script>
 </body>
 </html>
