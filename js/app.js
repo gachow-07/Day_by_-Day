@@ -3940,12 +3940,8 @@
       mark.appendChild(icon('check', 14));
       label.appendChild(mark);
       label.appendChild(el('span', 'item-task-text', t.text));
-      if (t.due) {
-        var late = !t.done && t.due < today;
-        var chip = el('span', 'todo-due-chip' + (late ? ' is-late' : t.due === today && !t.done ? ' is-today' : ''), dueText(t.due));
-        label.appendChild(chip);
-      }
       li.appendChild(label);
+      li.appendChild(todoDateControl(t));
       var rm = el('button', 'icon-btn item-task-remove');
       rm.type = 'button';
       rm.dataset.todoRemove = t.id;
@@ -4071,17 +4067,108 @@
   function onTodoAdd(event) {
     event.preventDefault();
     if (holdForAccount()) return;
-    var r = core.addTodo(state, $('todo-input').value, $('todo-due').value || null);
+    var r = core.addTodo(state, $('todo-input').value, null);
     if (!r.ok) { importantError('todo-error', r.message); $('todo-input').focus(); return; }
     if (!commit(r.state)) return;
     importantError('todo-error', '');
     announce('Added ' + core.cleanName($('todo-input').value) + '.');
     $('todo-input').value = '';
-    $('todo-due').value = '';
     $('todo-input').focus();
   }
 
+  var todoDateEditing = null; // id of the to-do whose due date is being picked
+
+  /** The due date of a to-do: a chip (tap to change), a calendar button to add one, or the date picker. */
+  function todoDateControl(t) {
+    var wrap = el('span', 'todo-date');
+    if (todoDateEditing === t.id) {
+      var input = el('input', 'input input-sm todo-date-input');
+      input.type = 'date';
+      input.value = t.due || '';
+      input.dataset.todoDate = t.id;
+      input.setAttribute('aria-label', 'Due date for ' + t.text);
+      wrap.appendChild(input);
+      var done = el('button', 'btn btn-ghost btn-sm', 'Done');
+      done.type = 'button';
+      done.dataset.todoDateDone = t.id;
+      wrap.appendChild(done);
+      if (t.due) {
+        var clear = el('button', 'btn btn-ghost btn-sm', 'No date');
+        clear.type = 'button';
+        clear.dataset.todoDateClear = t.id;
+        clear.setAttribute('aria-label', 'Remove the due date from ' + t.text);
+        wrap.appendChild(clear);
+      }
+      return wrap;
+    }
+    var b = el('button', t.due ? 'todo-due-chip' : 'icon-btn todo-date-add');
+    b.type = 'button';
+    b.dataset.todoDateEdit = t.id;
+    if (t.due) {
+      var late = !t.done && t.due < today;
+      if (late) b.classList.add('is-late');
+      else if (t.due === today && !t.done) b.classList.add('is-today');
+      b.textContent = dueText(t.due);
+      b.setAttribute('aria-label', 'Due ' + formatDate(t.due, 'long') + (late ? ', overdue' : '') + '. Change the due date for ' + t.text);
+    } else {
+      b.appendChild(icon('calendar-days', 16));
+      b.setAttribute('aria-label', 'Add a due date to ' + t.text);
+      b.dataset.tip = 'Add a date';
+    }
+    wrap.appendChild(b);
+    return wrap;
+  }
+
+  function setTodoDue(id, due) {
+    var t = (state.todos || []).filter(function (x) { return x.id === id; })[0];
+    if (!t || holdForAccount()) return;
+    var r = core.updateTodo(state, id, { due: due || null });
+    if (!r.ok) { importantError('todo-error', r.message); return; }
+    importantError('todo-error', '');
+    todoDateEditing = null;
+    if (!commit(r.state)) return;
+    announce(due ? t.text + ' is due ' + formatDate(due, 'long') + '.' : 'Removed the due date from ' + t.text + '.');
+    var again = $('todo-list').querySelector('[data-todo-date-edit="' + id + '"]');
+    if (again) again.focus();
+  }
+
+  function onTodoDateClick(event) {
+    var edit = event.target.closest('[data-todo-date-edit]');
+    if (edit) {
+      todoDateEditing = edit.dataset.todoDateEdit;
+      renderImportant();
+      var input = $('todo-list').querySelector('[data-todo-date="' + todoDateEditing + '"]');
+      if (input) {
+        input.focus();
+        try { if (input.showPicker) input.showPicker(); } catch (e) { /* the field still works by typing */ }
+      }
+      return true;
+    }
+    var clear = event.target.closest('[data-todo-date-clear]');
+    if (clear) { setTodoDue(clear.dataset.todoDateClear, null); return true; }
+    var done = event.target.closest('[data-todo-date-done]');
+    if (done) {
+      var id = done.dataset.todoDateDone;
+      var value = $('todo-list').querySelector('[data-todo-date="' + id + '"]').value;
+      var t = (state.todos || []).filter(function (x) { return x.id === id; })[0];
+      if (t && (value || null) !== t.due) { setTodoDue(id, value || null); return true; }
+      todoDateEditing = null;
+      renderImportant();
+      var back = $('todo-list').querySelector('[data-todo-date-edit="' + id + '"]');
+      if (back) back.focus();
+      return true;
+    }
+    return false;
+  }
+
   function onTodoChange(event) {
+    var dateInput = event.target.closest('[data-todo-date]');
+    if (dateInput) {
+      // Picking from the calendar saves straight away; while a year is
+      // still being typed (0002, 0020…) wait for the whole year.
+      if (dateInput.value && Number(dateInput.value.slice(0, 4)) >= 1900) setTodoDue(dateInput.dataset.todoDate, dateInput.value);
+      return;
+    }
     var cb = event.target.closest('[data-todo-id]');
     if (!cb) return;
     if (holdForAccount()) { renderImportant(); return; }
@@ -4091,6 +4178,7 @@
   }
 
   function onTodoRemove(event) {
+    if (onTodoDateClick(event)) return;
     var b = event.target.closest('[data-todo-remove]');
     if (!b || holdForAccount()) return;
     var li = b.closest('li');
@@ -4547,6 +4635,21 @@
     $('todo-list').addEventListener('change', onTodoChange);
     $('todo-list').addEventListener('click', onTodoRemove);
     $('todo-clear').addEventListener('click', onTodoClear);
+    $('todo-list').addEventListener('keydown', function (e) {
+      var input = e.target.closest('[data-todo-date]');
+      if (!input) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        var id = input.dataset.todoDate;
+        todoDateEditing = null;
+        renderImportant();
+        var back = $('todo-list').querySelector('[data-todo-date-edit="' + id + '"]');
+        if (back) back.focus();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (input.value) setTodoDue(input.dataset.todoDate, input.value);
+      }
+    });
     $('date-form').addEventListener('submit', onDateAdd);
     $('panel-important').addEventListener('click', onDatesClick);
     $('next-up-open').addEventListener('click', function () { if (nextUpId) openItemDialog(today, nextUpId); });
